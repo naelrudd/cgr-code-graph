@@ -1,0 +1,5 @@
+# Shell scripts must survive a Windows checkout: CRLF makes bash fail on the
+# shebang and on every `set -euo pipefail` line.
+* text=auto
+*.sh text eol=lf
+*.ps1 text eol=crlf

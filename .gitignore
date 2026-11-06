@@ -1,0 +1,9 @@
+# graph/vector artifacts are per-machine, never committed
+*.sqlite
+*.sqlite-*
+*.db
+
+# local verification scratch
+tmp/
+scratch/
+*.log
