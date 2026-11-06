@@ -24,6 +24,8 @@ cd cgr-code-graph
 bash scripts/install.sh                      # uv tool + missing httpx + torch/transformers
 bash scripts/init-workspace.sh money D:/work # detect projects, register, start indexing
 bash scripts/register-mcp.sh money D:/work   # make it automatic (Hermes example)
+bash scripts/refresh.sh money                # later: incremental re-sync, seconds
+bash scripts/ask.sh money "where is X built?"  # CLI query, no agent needed
 ```
 
 PowerShell users: `pwsh -File scripts/install.ps1` (same steps).

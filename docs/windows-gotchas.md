@@ -118,6 +118,18 @@ It reads like a cgr bug. It is argv mangling. Keep every glob inside a script fi
 
 `ORCHESTRATOR_*`/`CYPHER_*` unset is not a "graph-only, no LLM needed" situation: cgr also calls the orchestrator during a sync (summaries). The default is `ollama:llama3.2` on `:11434`, and against a dead Ollama a sync **stalls for minutes per node** rather than failing — measured on the reference corpus: 15 s with a live endpoint vs. a >3-minute timeout without, for the same one-file repo. Set the provider env (see `scripts/index.sh`) or start Ollama before any sync.
 
+## 9. Never run two syncs at once
+
+Every project shares one `graph.sqlite` and one `vectors.sqlite` under `~/.cgr/`. Two concurrent `cgr start --update-graph` runs contend on the SQLite write lock and **both** crawl to a halt — the visible symptom is a sync that sits for 10+ minutes on a two-file repo, or node counts that barely move.
+
+Check for strays before starting, and kill them (Windows, from git-bash, since `ps` lies about dead processes here):
+
+```bash
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Where-Object { \$_.CommandLine -like '*cgr*' } | ForEach-Object { \$_.ProcessId }"
+```
+
+Watch real progress by reading the counters, not the log: `cgr_nodes` in `graph.sqlite` should climb by thousands per minute during a healthy sync.
+
 ## Bonus: `cgr doctor` / `cgr status` noise
 
 - `cgr doctor` reports `orchestrator: ollama:llama3.2` and `:11434 connection refused` by default. Harmless if you never call `ask_agent`.

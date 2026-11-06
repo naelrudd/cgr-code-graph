@@ -1,26 +1,17 @@
 ---
 name: cgr-code-graph
 description: "Use when indexing or querying code with cgr."
-version: 1.0.0
-author: Hermes Agent
-license: MIT
-metadata:
-  hermes:
-    tags: [code-graph, embeddings, mcp, rag, windows]
-    related_skills: [semantic-cache-and-vector-search, graphify]
 ---
 
 # code-graph-rag (cgr) — code knowledge graph + local embeddings
 
-## When to Use
-
-Use when the task is "embed the whole repo", "ask questions across projects", dead-code or duplicate detection, or wiring an MCP that answers codebase questions. Windows host, uv-managed.
+Use when the task is "embed the whole repo", "ask questions across projects", dead-code/duplicate detection, or wiring an MCP that answers codebase questions. Windows host, uv-managed.
 
 ## Install (Windows)
 
 ```bash
 uv tool install "code-graph-rag[treesitter-full,sqlite-vec]"
-uv pip install --python "$(uv tool dir)/code-graph-rag/Scripts/python.exe" httpx
+uv pip install --python "$APPDATA/uv/tools/code-graph-rag/Scripts/python.exe" httpx
 ```
 
 The `httpx` injection is required: v0.5.0 crashes on every command with `ModuleNotFoundError: No module named 'httpx'` because `tools/health_checker.py` imports it but the wheel omits it. Same venv takes `torch` + `transformers` for local embeddings (~1 GB, no GPU needed).
@@ -32,11 +23,12 @@ Tools live in `~/.local/bin` (not on PATH by default); graph is `~/.cgr/graph.sq
 - Default local UniXcoder (768d) is the only path that survives a full corpus: ~1.1 chunk/s on CPU, zero cost, zero quota. Expect ~7 min per 400 embeddings.
 - `gemini/gemini-embedding-001` via a local OpenAI-compatible router fails two ways — free tier returns `429 ... limit: 30000 tokens/min` / `100 requests/min`, and the router omits `index` on the first item, which cgr rejects as `response is malformed: 'index'`.
 - NVIDIA-hosted embed models accept one input per request (batch → `500 service inference failed`), so they are query-side only.
-- Unset stray `OPENAI_*` / `CGR_EMBEDDING_PROVIDER` exports before ingest or cgr prefers them.
+
+Only set `CGR_EMBEDDING_PROVIDER=openai` for a small pilot against a paid endpoint.
 
 ## LLM provider for ask_agent / NL→Cypher
 
-`ORCHESTRATOR_PROVIDER=openai` rejects any model id outside its hardcoded list (`Unknown openai model '<id>'`). For a custom OpenAI-compatible endpoint use the proxy provider:
+`ORCHESTRATOR_PROVIDER=openai` rejects any model id outside its hardcoded list (`Unknown openai model 'free-coding'`). For a custom OpenAI-compatible endpoint use the proxy provider:
 
 ```bash
 export ORCHESTRATOR_PROVIDER=litellm_proxy ORCHESTRATOR_MODEL=<model-id>
@@ -57,7 +49,7 @@ cgr start --workspace <name> --update-graph \
   --exclude "**/Library/**" --exclude "**/.next/**" --exclude "**/dist/**" --exclude "**/build/**"
 ```
 
-Run it as a tracked background job (hours for a large corpus), never `nohup`. Case-insensitive exclusions matter: a case-sensitive filter over a Unity/Python corpus over-sizes it by ~5x.
+Run it as a tracked background job (hours for a large corpus), never `nohup`.
 
 ## MCP registration (what makes it automatic)
 
@@ -67,21 +59,19 @@ hermes mcp add cgr --command "C:/Users/<u>/.local/bin/cgr.exe" --connect-timeout
 ```
 
 Two traps:
-
-- The client spawns the server with cwd = the user's home, and cgr refuses to serve from a home dir or disk root (`Configuration error: The MCP server was started in C:\Users\<u>...`). The client only reports `Connection closed`. Always pass `TARGET_REPO_PATH=<corpus root>`, which is not home.
+- The client spawns the server with cwd = the user's home, and cgr refuses to serve from a home dir or disk root (`Configuration error: The MCP server was started in C:\Users\<u>...`). Always pass `TARGET_REPO_PATH=<corpus root>`, which is not home.
 - `hermes mcp add` ends with an interactive `Enable all N tools? [Y/n/select]` prompt; piped stdin gives it EOF and cancels after a successful connect. Feed it `printf 'y\n' |`.
 
 Verify with `hermes mcp test cgr`. New tools only appear after `/reload-mcp` or a new session — a running session does not pick them up.
 
-## Reload is atomic
+## Sync operations (where runs go wrong)
 
-`/reload-mcp` fails with `mcp_servers_unavailable` if **any** enabled server is unreachable — one dead local server (an app that is closed) blocks the tools of every healthy one, and the message names nothing. Diagnose by probing each configured endpoint, then disable the dead one:
-
-```bash
-hermes config set mcp_servers.<name>.enabled false   # there is no `hermes mcp disable`
-```
-
-`patch`/`write_file` refuse to touch `config.yaml` (security-sensitive), so `hermes config set` is the only agent-editable path.
+- **Never run two syncs at once.** Every project shares `graph.sqlite` + `vectors.sqlite`; two concurrent `cgr start --update-graph` contend on the SQLite write lock and both crawl — the symptom is a sync stuck 10+ minutes on a two-file repo. List strays with `powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Where-Object { $_.CommandLine -like '*cgr*' }"`; MSYS `ps -W` reports killed processes as alive, so trust the PowerShell listing.
+- **A sync needs the LLM, not just `ask_agent`.** cgr calls the orchestrator during sync (summaries). Unset, it defaults to `ollama:llama3.2` on `:11434` and a dead Ollama stalls for minutes per node instead of failing: same one-file repo was 15 s with a live endpoint, >3 min timeout without.
+- **Keep exclude globs inside a script file.** `--exclude '**/node_modules/**'` typed by hand works; passed through a launcher that re-splits the command line (background job runner, `sh -c`, CI) the quotes die, the shell expands the pattern, and cgr dies with `Got unexpected extra argument(s)` listing hundreds of paths. Repo `scripts/index.sh` exists for exactly this.
+- **MSYS paths must be converted.** `cgr.exe` cannot resolve `/d/work` or `/tmp/x`, and `workspace add-repo` fails silently per project; wrap with `cygpath -w` and surface stderr instead of `>/dev/null 2>&1`.
+- Progress check is a counter, not the log: `cgr_nodes` in `~/.cgr/graph.sqlite` climbs by thousands per minute when healthy.
+- `cgr workspace delete <name>` removes the definition but keeps indexed graph rows; `cgr workspace remove-repo` drops a single repo.
 
 ## Operating notes
 
