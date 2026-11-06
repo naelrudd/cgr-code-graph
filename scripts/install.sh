@@ -4,6 +4,9 @@
 set -euo pipefail
 
 UV_TOOL_NAME="code-graph-rag"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_common.sh
+. "$SCRIPT_DIR/_common.sh"
 
 if ! command -v uv >/dev/null 2>&1; then
   echo "error: uv is required (https://docs.astral.sh/uv/). Install it, then re-run." >&2
@@ -17,10 +20,9 @@ uv tool install "${UV_TOOL_NAME}[treesitter-full,sqlite-vec,ast-grep]" || uv too
 
 # The wheel imports httpx from tools/health_checker.py but does not depend on it,
 # so every command dies with ModuleNotFoundError until it is present in the tool venv.
-TOOL_PY="$(uv tool dir)/${UV_TOOL_NAME}/Scripts/python.exe"
-[ -x "$TOOL_PY" ] || TOOL_PY="$(uv tool dir)/${UV_TOOL_NAME}/bin/python"
-if [ ! -x "$TOOL_PY" ]; then
-  echo "error: could not locate the tool venv python under $(uv tool dir)/${UV_TOOL_NAME}" >&2
+TOOL_PY="$(cgr_tool_python || true)"
+if [ -z "$TOOL_PY" ] || [ ! -x "$TOOL_PY" ]; then
+  echo "error: could not locate the tool venv python (searched $(cgr_tool_roots | tr '\n' ' '))" >&2
   exit 1
 fi
 echo "==> tool python: $TOOL_PY"
@@ -36,7 +38,7 @@ if ! "$TOOL_PY" -c 'import torch, transformers' 2>/dev/null; then
   uv pip install --python "$TOOL_PY" 'torch>=2.6.0' 'transformers>=5.0.0'
 fi
 
-BIN_DIR="$(uv tool dir --bin 2>/dev/null || echo "$HOME/.local/bin")"
+BIN_DIR="$(cgr_shim_dir)"
 echo
 echo "==> done"
 echo "    binary: ${BIN_DIR}/cgr (Windows: ${BIN_DIR}/cgr.exe)"

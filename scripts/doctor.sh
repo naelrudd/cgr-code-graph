@@ -13,6 +13,11 @@ QUIET=0
 if [ "${1:-}" = "--quiet" ]; then QUIET=1; shift; fi
 ROOT="${1:-}"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_common.sh
+. "$SCRIPT_DIR/_common.sh"
+HOME_U="$(cgr_home)"
+
 TOOL_NAME="${CGR_TOOL_NAME:-code-graph-rag}"
 PASS=0; WARN=0; FAIL=0
 
@@ -63,8 +68,8 @@ if command -v "$CGR" >/dev/null 2>&1; then
   CGR_ABS="$(command -v "$CGR")"
 else
   # uv puts tool shims in a dir that is often not on PATH in scripts/CI.
-  for cand in "$(uv tool dir --bin 2>/dev/null)/$CGR" "$(uv tool dir --bin 2>/dev/null)/$CGR.exe" \
-              "$HOME/.local/bin/$CGR" "$HOME/.local/bin/$CGR.exe"; do
+  for cand in "$(cgr_shim_dir)/$CGR" "$(cgr_shim_dir)/$CGR.exe" \
+              "$HOME_U/.local/bin/$CGR" "$HOME_U/.local/bin/$CGR.exe"; do
     [ -x "$cand" ] && { CGR_ABS="$cand"; break; }
   done
 fi
@@ -81,15 +86,16 @@ else
   CGR="cgr"
 fi
 
-TOOL_ROOT="$(uv tool dir 2>/dev/null || echo "$HOME/.local/share/uv/tools")"
-TOOL_DIR="$TOOL_ROOT/$TOOL_NAME"
-TOOL_PY="$TOOL_DIR/Scripts/python.exe"
-[ -x "$TOOL_PY" ] || TOOL_PY="$TOOL_DIR/bin/python"
-
-if [ -x "$TOOL_PY" ]; then
+TOOL_PY="$(cgr_tool_python || true)"
+if [ -n "$TOOL_PY" ]; then
   pass "tool venv python: $TOOL_PY"
+  TOOL_ROOT="$(dirname "$(dirname "$TOOL_PY")")"
+  TOOL_DIR="$TOOL_ROOT/$TOOL_NAME"
 else
-  fail "tool venv not found under $TOOL_ROOT/$TOOL_NAME" "uv tool install \"$TOOL_NAME[treesitter-full,sqlite-vec,ast-grep]\""
+  TOOL_ROOT="$(cgr_tool_roots | head -1)"
+  TOOL_DIR="$TOOL_ROOT/$TOOL_NAME"
+  fail "tool venv not found (searched $(cgr_tool_roots | tr '\n' ' '))" \
+       "uv tool install \"$TOOL_NAME[treesitter-full,sqlite-vec,ast-grep]\""
 fi
 
 py_has() { [ -x "$TOOL_PY" ] && "$TOOL_PY" -c "import $1" >/dev/null 2>&1; }
@@ -115,7 +121,7 @@ fi
 
 hdr "resources"
 
-CGR_HOME="${CGR_HOME:-$HOME/.cgr}"
+CGR_HOME="${CGR_HOME:-$HOME_U/.cgr}"
 if [ -d "$CGR_HOME" ]; then
   pass "graph home: $CGR_HOME"
 else
@@ -230,7 +236,7 @@ hdr "client wiring"
 if command -v hermes >/dev/null 2>&1; then
   pass "hermes CLI present"
   CFG="$LOCALAPPDATA/hermes/config.yaml"
-  [ -f "$CFG" ] || CFG="$HOME/.hermes/config.yaml"
+  [ -f "$CFG" ] || CFG="$HOME_U/.hermes/config.yaml"
   if [ -f "$CFG" ]; then
     if grep -q "TARGET_REPO_PATH" "$CFG" 2>/dev/null; then
       pass "an MCP entry sets TARGET_REPO_PATH (required: clients spawn servers from the home dir)"

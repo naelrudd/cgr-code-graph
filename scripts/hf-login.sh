@@ -11,11 +11,12 @@
 # your files. Never commit a token, and never paste it into a chat.
 set -uo pipefail
 
-TOOL_NAME="${CGR_TOOL_NAME:-code-graph-rag}"
-TOOL_ROOT="$(uv tool dir 2>/dev/null || echo "$HOME/.local/share/uv/tools")"
-PY="$TOOL_ROOT/$TOOL_NAME/Scripts/python.exe"
-[ -x "$PY" ] || PY="$TOOL_ROOT/$TOOL_NAME/bin/python"
-[ -x "$PY" ] || { echo "error: tool venv python not found under $TOOL_ROOT/$TOOL_NAME (run scripts/install.sh)" >&2; exit 1; }
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_common.sh
+. "$SCRIPT_DIR/_common.sh"
+
+PY="$(cgr_tool_python || true)"
+[ -n "$PY" ] || { echo "error: tool venv python not found (run scripts/install.sh, or set CGR_TOOL_NAME)" >&2; exit 1; }
 
 TOKEN_FILE="$("$PY" - <<'PY'
 import os
