@@ -235,7 +235,7 @@ hdr "client wiring"
 
 if command -v hermes >/dev/null 2>&1; then
   pass "hermes CLI present"
-  CFG="$LOCALAPPDATA/hermes/config.yaml"
+  CFG="${LOCALAPPDATA:-}/hermes/config.yaml"
   [ -f "$CFG" ] || CFG="$HOME_U/.hermes/config.yaml"
   if [ -f "$CFG" ]; then
     if grep -q "TARGET_REPO_PATH" "$CFG" 2>/dev/null; then

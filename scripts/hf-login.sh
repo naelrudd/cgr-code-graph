@@ -26,6 +26,16 @@ PY
 TOKEN_FILE="${TOKEN_FILE%$'\r'}"
 
 case "${1:-login}" in
+  --where|where)
+    echo "HOME (bash)        : $HOME"
+    echo "profile resolved   : $(cgr_home)"
+    echo "uv                 : $(cgr_uv 2>/dev/null || echo 'not found')"
+    echo "tool python        : $(cgr_tool_python 2>/dev/null || echo 'NOT FOUND')"
+    echo "shim dir           : $(cgr_shim_dir)"
+    echo "searched roots     :"
+    cgr_tool_roots | sed 's/^/  - /'
+    ;;
+
   --status|status)
     "$PY" - <<'PY'
 import os, sys
