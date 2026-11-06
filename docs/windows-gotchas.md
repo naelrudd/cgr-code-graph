@@ -114,9 +114,15 @@ Try 'cgr start --help' for help.
 
 It reads like a cgr bug. It is argv mangling. Keep every glob inside a script file (`scripts/index.sh`) and invoke the script, never a long quoted one-liner.
 
-## 8. A sync uses the LLM, not just `ask_agent`
+## 8. A sync never calls the LLM — so indexing can be fully offline
 
-`ORCHESTRATOR_*`/`CYPHER_*` unset is not a "graph-only, no LLM needed" situation: cgr also calls the orchestrator during a sync (summaries). The default is `ollama:llama3.2` on `:11434`, and against a dead Ollama a sync **stalls for minutes per node** rather than failing — measured on the reference corpus: 15 s with a live endpoint vs. a >3-minute timeout without, for the same one-file repo. Set the provider env (see `scripts/index.sh`) or start Ollama before any sync.
+Correcting a very natural assumption (and an earlier version of this doc): `cgr start --update-graph` involves **no** LLM at all. Verified against 0.5.0 — `graph_updater.py` has no orchestrator reference, and `ORCHESTRATOR_PROVIDER` is read only in `cli.py` / `main.py`, i.e. the assistant and `ask_agent` paths. Graph building is tree-sitter + ast-grep parsing plus the local embedding model.
+
+Consequences worth knowing:
+
+- A full graph build leaks nothing. No API key, no network, no quota.
+- Do not bother configuring `ORCHESTRATOR_*` / `CYPHER_*` before an overnight build — they matter only for `ask_agent` and NL→Cypher.
+- If a sync looks like it is "waiting on a model", it is not. Look instead at concurrent syncs sharing `graph.sqlite` (§9) or at stray processes.
 
 ## 9. Never run two syncs at once
 
