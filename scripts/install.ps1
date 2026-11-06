@@ -10,7 +10,9 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 }
 
 Write-Host "==> installing $tool"
-try { uv tool install "$tool[treesitter-full,sqlite-vec]" }
+# ast-grep extra is what lets the bash/shell/nix tier parse; without it those files
+# land in the graph as bare File nodes.
+try { uv tool install "$tool[treesitter-full,sqlite-vec,ast-grep]" }
 catch { uv tool upgrade $tool }
 
 $toolRoot = uv tool dir

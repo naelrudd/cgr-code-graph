@@ -130,6 +130,24 @@ powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='py
 
 Watch real progress by reading the counters, not the log: `cgr_nodes` in `graph.sqlite` should climb by thousands per minute during a healthy sync.
 
+## 10. Without the `ast-grep` extra, shell scripts become dead nodes
+
+The default extras parse the big languages but not shell/nix. A sync finishes and quietly reports:
+
+```
+22 file(s) (bash: 20, nix: 2) were indexed as plain File nodes, with no modules,
+functions, classes or imports: the ast-grep tier parses these languages and needs
+the ast-grep extra. Install it, e.g. uv tool install "code-graph-rag[treesitter-full,ast-grep,semantic]"
+```
+
+A shell script in the graph as a bare `File` node is invisible to `semantic_search` and to every call/import query — exactly the scripts people ask about ("where do we run the deploy?"). Install `ast-grep` up front (`scripts/install.sh` includes it), or inject it into an existing tool venv:
+
+```bash
+uv pip install --python "$(uv tool dir)/code-graph-rag/Scripts/python.exe" ast-grep-py
+```
+
+Existing nodes are not retro-fixed: run one more `--update-graph` (the hash cache will re-parse only what changed... which is nothing, so use `cgr workspace remove-repo` + `add-repo` for that project, or `--clean` on a small corpus).
+
 ## Bonus: `cgr doctor` / `cgr status` noise
 
 - `cgr doctor` reports `orchestrator: ollama:llama3.2` and `:11434 connection refused` by default. Harmless if you never call `ask_agent`.

@@ -11,7 +11,9 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 echo "==> installing ${UV_TOOL_NAME}"
-uv tool install "${UV_TOOL_NAME}[treesitter-full,sqlite-vec]" || uv tool upgrade "${UV_TOOL_NAME}"
+# ast-grep extra is what lets the bash/shell/nix tier parse; without it those files
+# land in the graph as bare File nodes ("...were indexed as plain File nodes").
+uv tool install "${UV_TOOL_NAME}[treesitter-full,sqlite-vec,ast-grep]" || uv tool upgrade "${UV_TOOL_NAME}"
 
 # The wheel imports httpx from tools/health_checker.py but does not depend on it,
 # so every command dies with ModuleNotFoundError until it is present in the tool venv.
