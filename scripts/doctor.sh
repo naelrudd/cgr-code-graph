@@ -195,20 +195,33 @@ else
   pass "no stray Windows-path filenames in $(pwd)"
 fi
 
-# Stray syncs are the single most common cause of a "hung" build.
-STRAY=""
+# Stray syncs are the single most common cause of a "hung" build. Read-only MCP
+# servers are not: they hold the graph open for reading and are expected to be
+# running whenever an agent is connected. Counting them as strays trains the user
+# to ignore this warning, which is how a real contention goes unnoticed.
+PROCS=""
 if [ "$OS_KIND" = "windows-msys" ]; then
   PS="$(command -v powershell.exe || echo /c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe)"
-  STRAY="$("$PS" -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Where-Object { \$_.CommandLine -like '*cgr*' } | ForEach-Object { \$_.ProcessId }" 2>/dev/null | tr -d '\r')"
-elif command -v pgrep >/dev/null 2>&1; then
-  STRAY="$(pgrep -f 'cgr.*start' 2>/dev/null)"
+  PROCS="$("$PS" -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Where-Object { \$_.CommandLine -like '*cgr*' } | ForEach-Object { \$_.ProcessId.ToString() + '|' + \$_.CommandLine }" 2>/dev/null | tr -d '\r')"
+elif command -v ps >/dev/null 2>&1; then
+  PROCS="$(ps -A -o pid=,args= 2>/dev/null | grep '[c]gr' | sed 's/^ *//; s/  */|/')"
 fi
-STRAY_N="$(printf '%s' "$STRAY" | tr -s '[:space:]' '\n' | grep -c '[0-9]' || true)"
-if [ "${STRAY_N:-0}" -eq 0 ]; then
-  pass "no cgr processes running"
+
+# Writers touch graph.sqlite; readers do not. Only writers can contend.
+SYNC_PIDS="$(printf '%s
+' "$PROCS" | grep -iE '\|.*cgr.*(index|refresh|sync|start)' | cut -d'|' -f1 | tr -d ' ' | tr '
+' ' ' || true)"
+MCP_N="$(printf '%s
+' "$PROCS" | grep -ic 'mcp-server' || true)"
+
+if [ -n "$(printf '%s' "$SYNC_PIDS" | tr -d ' ')" ]; then
+  SYNC_N="$(printf '%s' "$SYNC_PIDS" | tr -s ' ' '
+' | grep -c '[0-9]' || true)"
+  warn "$SYNC_N cgr sync process(es) running (pids: $(printf '%s' "$SYNC_PIDS" | tr -s ' ' ' ')) — two syncs sharing graph.sqlite make both crawl"        "let a single sync finish, or kill the strays before starting another"
+elif [ "${MCP_N:-0}" -gt 0 ]; then
+  pass "$MCP_N read-only cgr MCP server(s) running (no writers; they do not contend)"
 else
-  warn "$STRAY_N cgr process(es) running (pids: $(printf '%s' "$STRAY" | tr -s '[:space:]' ' ')) — two syncs sharing graph.sqlite make both crawl" \
-       "let a single sync finish, or kill the strays before starting another"
+  pass "no cgr processes running"
 fi
 
 if [ -f "$CGR_HOME/graph.sqlite-wal" ]; then
