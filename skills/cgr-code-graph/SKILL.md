@@ -158,6 +158,15 @@ Verify with `hermes mcp test cgr`. New tools only appear after `/reload-mcp` or 
 
 ## Sync operations (where runs go wrong)
 
+- **`--update-graph` with `--workspace` is not a headless build.** Repo mode
+  (`--repo-path ... --update-graph`) syncs and exits; workspace mode syncs every
+  repo and *then starts the assistant*, which validates an LLM provider before
+  reading any input and dies with `ValueError: Ollama server not responding at
+  http://localhost:11434`. A background job therefore reports failure after a
+  perfectly good sync — check `select count(*) from cgr_nodes` before believing
+  the traceback. Sync per repo instead (`--repo-path <p> --project-name <name from
+  the workspace toml> --update-graph`), which is what the kit's `scripts/index.sh`
+  does; it also reports which repo failed and exits non-zero on that.
 - **Never run two syncs at once.** Every project shares `graph.sqlite` + `vectors.sqlite`; two concurrent `cgr start --update-graph` contend on the SQLite write lock and both crawl — the symptom is a sync stuck 10+ minutes on a two-file repo. List strays with `powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Where-Object { $_.CommandLine -like '*cgr*' }"`; MSYS `ps -W` reports killed processes as alive, so trust the PowerShell listing.
 - **A sync never calls the LLM.** `graph_updater.py` has no orchestrator reference; `ORCHESTRATOR_PROVIDER` is read only in `cli.py` / `main.py` (assistant + `ask_agent`). A full build is tree-sitter/ast-grep parsing plus the local embedding model — no key, no network, no quota. So do not bother configuring `ORCHESTRATOR_*` before an overnight build, and if a sync looks like it waits on a model, it is really contending on `graph.sqlite` (next bullet).
 - **Keep exclude globs inside a script file.** `--exclude '**/node_modules/**'` typed by hand works; passed through a launcher that re-splits the command line (background job runner, `sh -c`, CI) the quotes die, the shell expands the pattern, and cgr dies with `Got unexpected extra argument(s)` listing hundreds of paths. Repo `scripts/index.sh` exists for exactly this.

@@ -25,6 +25,17 @@ release it installs.
 
 ### Fixed
 
+- `scripts/index.sh` no longer ends in a traceback. It used
+  `cgr start --workspace <ws> --update-graph`, which syncs every repo and *then
+  starts the assistant* — only repo mode "exits without starting the assistant",
+  per that flag's own help. A background build finished its sync and then died at
+  `ValueError: Ollama server not responding at http://localhost:11434`, non-zero
+  exit, graph fully written. It now reads the workspace file and syncs each repo
+  with `--repo-path ... --project-name <recorded name> --update-graph`, names the
+  repo that failed, exits non-zero when any did, and says which file is missing
+  when the workspace does not exist. `tests/smoke.sh` asserts the argv against a
+  stub `cgr`.
+
 - `--exclude` globs are expanded by cgr against the **current directory**, not the
   repo being indexed, so any pattern matching a real path under `cwd` was injected
   as extra argv and killed the run with `Got unexpected extra argument(s)`.
