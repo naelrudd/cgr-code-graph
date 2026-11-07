@@ -1,0 +1,66 @@
+name: Bug report
+description: Something in the kit failed, or a documented step did not work.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For a **suspected vulnerability**, stop here and use
+        [private vulnerability reporting](../security/policy) instead of a public issue.
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Where the shell that ran the script lives.
+      options:
+        - Windows — git-bash (MSYS)
+        - Windows — WSL
+        - Windows — PowerShell (install.ps1)
+        - Linux
+        - macOS
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: Output of `uv --version`, `cgr --version`, and `python3 --version`.
+      placeholder: uv 0.11.26 · cgr 0.5.0 · Python 3.13.7
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: The command you ran
+      render: shell
+      placeholder: bash scripts/doctor.sh D:/work
+    validations:
+      required: true
+
+  - type: textarea
+    id: error
+    attributes:
+      label: The exact error text
+      description: Copy it verbatim, including the traceback or the tool's own wording. Screenshots are hard to search.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Preflight output
+      description: |
+        `bash scripts/doctor.sh` — paste the summary and any WARN/FAIL lines.
+        It reports most of what would otherwise be asked in follow-up questions.
+      render: text
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you already tried
+      description: Including anything that changed the symptom, even if it did not fix it.

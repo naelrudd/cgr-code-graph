@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/naelrudd/cgr-code-graph/security/advisories/new
+    about: Report privately. Do not open a public issue for a suspected vulnerability.
+  - name: A bug in code-graph-rag itself
+    url: https://github.com/vitali87/code-graph-rag/issues
+    about: Parsing, embedding or MCP behaviour that is not caused by this kit belongs upstream.
+  - name: Read the gotchas first
+    url: https://github.com/naelrudd/cgr-code-graph/blob/master/docs/windows-gotchas.md
+    about: The five traps that cost real hours — one of them is probably your error.
