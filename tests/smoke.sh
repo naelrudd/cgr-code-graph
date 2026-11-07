@@ -29,6 +29,12 @@ is "posix: forward slashes"               "$(cgr_posix_path 'D:/work/x')" "/d/wo
 is "posix: already-posix passes through"  "$(cgr_posix_path '/opt/src')" "/opt/src"
 is "posix: relative path untouched"       "$(cgr_posix_path 'src/app')" "src/app"
 
+# The fallback branch runs when neither cygpath nor wslpath exists (plain Linux,
+# a container). Shadow both with failing functions instead of editing PATH.
+noconv() { ( cygpath() { return 1; }; wslpath() { return 1; }; cgr_posix_path "$1" ); }
+is "posix fallback: single backslash separators" "$(noconv 'D:\work\x')" "/d/work/x"
+is "posix fallback: doubled backslashes"          "$(noconv 'D:\\work\\x')" "/d/work/x"
+
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*)
     is "native: shell path -> drive path" "$(cgr_native_path '/d/work/x')" 'D:\work\x'

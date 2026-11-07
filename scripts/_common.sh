@@ -20,8 +20,17 @@ cgr_posix_path() {
         out="$(cygpath -u "$p" 2>/dev/null)"
       fi
       if [ -z "$out" ]; then
+        # No converter on this host (plain Linux, a container): convert by hand.
+        # ${rest//\\//} replaces ONE backslash; the previous sed pattern
+        # was written as four escaped backslashes, so it matched only a doubled
+        # separator and left a single-\ path half-converted.
         d="$(printf '%s' "$p" | cut -c1 | tr '[:upper:]' '[:lower:]')"
-        out="/$d/$(printf '%s' "$p" | sed 's|^[A-Za-z]:||; s|\\\\|/|g; s|^/||')"
+        rest="${p#??}"
+        rest="${rest//\\//}"
+        out="/$d/${rest#/}"
+        # A doubled separator (a path that went through a TOML escape) becomes
+        # "//", which every consumer here treats as a different string.
+        out="$(printf '%s' "$out" | tr -s '/')"
       fi
       ;;
     *) out="$p" ;;

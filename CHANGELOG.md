@@ -9,6 +9,16 @@ release it installs.
 
 ## [Unreleased]
 
+### Fixed
+
+- `cgr_posix_path`'s no-converter fallback (plain Linux, containers) left a
+  single-backslash Windows path half-converted — `D:\work\x` became `/d/\work\x`.
+  The old sed pattern was written as four escaped backslashes, so it only matched
+  a doubled separator. Conversion is now a parameter expansion plus a slash
+  squeeze, and `tests/smoke.sh` covers both shapes with the converters shadowed.
+- `.gitattributes` pins `eol=lf` for every text file instead of only `*.sh`, so a
+  Windows checkout no longer produces CRLF diffs for docs and workflows.
+
 ## [0.1.0] — 2026-11-07
 
 First public release. Packaging, measured configuration and the failure list for
