@@ -41,7 +41,7 @@ That is the class of defect keyword search cannot produce: the two paths have di
 ## Reading results honestly
 
 - Quote `path:line` and real source. Never paraphrase a body you have not opened with `get_code_snippet`.
-- `get_code_snippet` on a handler defined inline returns a synthetic qualified name like `convex.admin.handler@198` — the `@<line>` suffix is the only disambiguator between sibling handlers in one file.
+- `get_code_snippet` on a handler defined inline returns a synthetic qualified name like `module.submodule.handler@198` — the `@<line>` suffix is the only disambiguator between sibling handlers in one file.
 - A `semantic_search` hit can be a UI component or config helper that merely shares vocabulary. Check `label` (Function / Method / Class / Module / Section) before believing it.
 - `Section` nodes mean markdown, not code — useful for docs questions, wrong for "who calls this".
 

@@ -17,7 +17,7 @@ Whole-drive workspace, 21 unrelated projects, measured with case-insensitive exc
 
 ## Single-project pass (measured)
 
-One Next.js + Convex project (1,313 functions):
+One mid-size web application, 1,313 functions (schema-driven backend plus a typed frontend):
 
 | stage | result |
 | --- | --- |
@@ -56,7 +56,10 @@ Full detail and the exact error strings: [`windows-gotchas.md`](windows-gotchas.
 Cheap end-to-end proof that graph + vectors are live, with no agent in the loop:
 
 ```bash
-cgr start --workspace <ws> --no-sync --ask-agent "Where does the services listing build its search index, and which file defines its validator args?"
+cgr start --workspace <ws> --no-sync --ask-agent "Where does the record search index get built, and which file defines its validator arguments?"
 ```
 
-On the reference project this returned `convex/services.ts:22-26` and `convex/admin.ts:216` — correct files, correct line ranges — and, more useful than the answer, it surfaced a real inconsistency: one approval mutation skipped the moderation-log write that its two sibling mutations performed. That is the class of finding keyword search does not produce.
+On the reference project this returned the right file and the right line range for both
+halves of the question. More useful than the answer, it surfaced a real inconsistency:
+one mutation in a family of three skipped the audit-log write its two siblings
+performed. That is the class of finding keyword search does not produce.

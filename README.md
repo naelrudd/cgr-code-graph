@@ -109,7 +109,7 @@ Full measurements, including the throughput math for sizing your own corpus:
    [`examples/CLAUDE.md`](examples/CLAUDE.md) into a repo's `CLAUDE.md` /
    `AGENTS.md`. This is what makes a *non*-`cgr`-aware agent reach for graph tools
    first.
-3. **Manual.** `bash scripts/ask.sh work "where is the listing search index built?"`
+3. **Manual.** `bash scripts/ask.sh work "where is the search index built?"`
 
 ## Requirements
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Ask the code graph a question from the terminal, without an agent session.
 #
-#   bash scripts/ask.sh <workspace> "where is the listing search index built?"
+#   bash scripts/ask.sh <workspace> "where is the search index built?"
 #
 # Requires an LLM endpoint (ORCHESTRATOR_*/CYPHER_* env, see docs/windows-gotchas.md#provider).
 set -euo pipefail
