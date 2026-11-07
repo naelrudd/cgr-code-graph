@@ -176,6 +176,20 @@ The short version:
 - Only projects that finished their first sync are queryable; a project still syncing or
   never added answers `Unknown project`. `list_projects` prints what is available right now —
   never promise cross-project coverage before every repo appears there.
+- **The indexing root is the resolution boundary.** Imports and calls resolve by path
+  against the root you index. Indexed as one root (a monorepo, or a parent directory that
+  holds several packages), a sibling import lands on a real `Module` and its call on the
+  real `Function`. Indexed as separate projects, the same import becomes an
+  `ExternalModule` stub and the call edge does not exist. So "no cross-project edges" is a
+  consequence of how you indexed, not a limitation to report as fixed. Measure before
+  claiming either way:
+  `select count(*) from cgr_edges e join cgr_nodes s on s.id=e.src join cgr_nodes d on d.id=e.dst where s.key not like d.key and d.label <> 'ExternalModule'`
+  gives zero when every edge stays inside one project.
+- Merging everything into one root is not free: one namespace, one hash cache, `--clean`
+  wipes the whole thing, and `--projects` filtering collapses to a single value. It only
+  pays when the repos genuinely reference each other by an importable path; two projects
+  that each depend on `lucide-react` gain nothing. `prune`/project-level state is also
+  lost per repo — no per-repo listing of file counts.
 - Answer a "where is X" question with three hops: `semantic_search` (purpose, in the project
   that owns the feature) → `get_code_snippet` (confirm the body) → `callers` (who reaches it).
   Then search the action verb *again* to catch parallel entry points that never call the
