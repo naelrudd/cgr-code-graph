@@ -7,15 +7,67 @@
 # that trust $HOME report "tool venv not found" on a perfectly good install, so
 # the profile is resolved by asking Windows, not by trusting the environment.
 
-# Convert a path for a NATIVE (non-MSYS) program. MSYS path conversion is off in
-# scripts, so /d/money/x reaches python.exe as D:\d\money\x and the file is not
-# found. Always pass file arguments through this.
+# Convert a Windows path (D:\work\x) into this shell's form (/mnt/d/work/x or
+# /d/work/x). Used to test paths that came out of a config file written by a
+# Windows program.
+cgr_posix_path() {
+  local p="$1" out="" d
+  case "$p" in
+    [A-Za-z]:*|\\\\*)
+      if command -v wslpath >/dev/null 2>&1; then
+        out="$(wslpath -u "$p" 2>/dev/null)"
+      elif command -v cygpath >/dev/null 2>&1; then
+        out="$(cygpath -u "$p" 2>/dev/null)"
+      fi
+      if [ -z "$out" ]; then
+        d="$(printf '%s' "$p" | cut -c1 | tr '[:upper:]' '[:lower:]')"
+        out="/$d/$(printf '%s' "$p" | sed 's|^[A-Za-z]:||; s|\\\\|/|g; s|^/||')"
+      fi
+      ;;
+    *) out="$p" ;;
+  esac
+  printf '%s' "$out"
+}
+
+# A directory visible to BOTH this shell and a Windows program. WSL's /tmp is
+# not visible to python.exe, so secrets handed over via a file must live in the
+# Windows profile tree.
+cgr_temp_dir() {
+  local h d; h="$(cgr_home)"
+  for d in "$h/AppData/Local/Temp" "${TMPDIR:-}" /tmp; do
+    [ -n "$d" ] || continue
+    [ -d "$d" ] && [ -w "$d" ] && { printf '%s' "$d"; return 0; }
+  done
+  printf '%s' "${h:-/tmp}"
+}
+
+# Convert a path for a NATIVE (non-MSYS, non-Linux) program. Two different
+# bash-on-Windows exist and they need different converters:
+#   git-bash / MSYS  -> cygpath -w
+#   WSL              -> wslpath -w   (/mnt/d/x  ->  D:\x)
+# Passing an unconverted /mnt/d/x to python.exe makes Windows read it as
+# D:\mnt\d\x, because it resolves a leading "/" against the current drive.
 cgr_native_path() {
+  local p="$1" out="" d
   if command -v cygpath >/dev/null 2>&1; then
-    cygpath -w "$1" 2>/dev/null || printf '%s' "$1"
-  else
-    printf '%s' "$1"
+    out="$(cygpath -w "$p" 2>/dev/null)"
+  elif command -v wslpath >/dev/null 2>&1; then
+    out="$(wslpath -w "$p" 2>/dev/null)"
   fi
+  if [ -z "$out" ]; then
+    case "$p" in
+      /mnt/[A-Za-z]/*)
+        d="$(printf '%s' "${p#/mnt/}" | cut -c1 | tr '[:lower:]' '[:upper:]')"
+        out="$d:\\$(printf '%s' "${p#/mnt/?/}" | tr '/' '\\')"
+        ;;
+      /[A-Za-z]/*)
+        d="$(printf '%s' "${p#/}" | cut -c1 | tr '[:lower:]' '[:upper:]')"
+        out="$d:\\$(printf '%s' "${p#/?/}" | tr '/' '\\')"
+        ;;
+      *) out="$p" ;;
+    esac
+  fi
+  printf '%s' "$out"
 }
 
 # Value of a Windows path env var, verbatim; empty when unknown.
@@ -24,11 +76,11 @@ cgr_win_var() {
   v="$(eval "printf '%s' \"\${$name:-}\"")"
   case "$v" in ""|*%*) v="" ;; esac
   if [ -z "$v" ] && command -v cmd >/dev/null 2>&1; then
-    v="$(cmd //c "echo %$name%" 2>/dev/null | tr -d '\r')"
+    v="$(cmd //c "echo %$name%" 2>/dev/null < /dev/null | tr -d '\r')"
     case "$v" in ""|*%*) v="" ;; esac
   fi
   if [ -z "$v" ] && command -v powershell.exe >/dev/null 2>&1; then
-    v="$(powershell.exe -NoProfile -Command "\$env:$name" 2>/dev/null | tr -d '\r')"
+    v="$(powershell.exe -NoProfile -Command "\$env:$name" 2>/dev/null < /dev/null | tr -d '\r')"
     case "$v" in ""|*%*) v="" ;; esac
   fi
   [ -n "$v" ] && printf '%s' "$v"
@@ -80,7 +132,7 @@ cgr_uv() {
     [ -x "$w" ] && { printf '%s' "$w"; return 0; }
   done
   if command -v cmd >/dev/null 2>&1; then
-    w="$(cmd //c "where uv" 2>/dev/null | tr -d '\r' | head -1)"
+    w="$(cmd //c "where uv" 2>/dev/null < /dev/null | tr -d '\r' | head -1)"
     if [ -n "$w" ]; then
       command -v cygpath >/dev/null 2>&1 && w="$(cygpath -u "$w" 2>/dev/null)"
       [ -x "$w" ] && { printf '%s' "$w"; return 0; }

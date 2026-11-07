@@ -20,6 +20,14 @@ except Exception as exc:  # pragma: no cover - dependency missing
 
 
 def read_token() -> str:
+    if "--token-file" in sys.argv:
+        path = sys.argv[sys.argv.index("--token-file") + 1]
+        try:
+            with open(path) as fh:
+                return fh.read().strip()
+        except OSError as exc:
+            print(f"error: cannot read the token file: {exc}", file=sys.stderr)
+            return ""
     if sys.stdin.isatty():
         return getpass.getpass("token: ").strip()
     # stdin may be a pipe (token piped in) - prefer it over touching the console,

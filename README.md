@@ -66,6 +66,7 @@ The MCP server exposes 25 read-only tools. The ones that change how agents work:
 
 - [`docs/windows-gotchas.md`](docs/windows-gotchas.md) — the five traps that cost real hours: the missing `httpx` in the wheel, the home-directory MCP guard, the `openai` provider rejecting custom model ids, the hosted-embedding dead ends, and the interactive prompt that silently cancels registration.
 - [`docs/benchmark.md`](docs/benchmark.md) — full measurements and the throughput math for sizing your own corpus.
+- [`docs/incremental-sync.md`](docs/incremental-sync.md) — why a second sync does not re-embed the corpus: the file hash cache and the content-hash embedding cache, what each change costs, and the one caveat (the cache is saved at the end of the pass).
 - [`skills/cgr-code-graph/SKILL.md`](skills/cgr-code-graph/SKILL.md) — the same content as an agent skill.
 
 ## Credit

@@ -59,7 +59,14 @@ hdr "prerequisites"
 if command -v uv >/dev/null 2>&1; then
   pass "uv $(uv --version 2>/dev/null | awk '{print $2}')"
 else
-  fail "uv not found — nothing else can be installed" "install uv: https://docs.astral.sh/uv/"
+  # uv is only needed to install or repair; an existing tool venv (common when
+  # the Windows install is being driven from WSL) makes it non-fatal.
+  if cgr_tool_python >/dev/null 2>&1; then
+    warn "uv not on PATH here, but an installed cgr tool venv was found — installing/repairing needs uv" \
+         "install uv: https://docs.astral.sh/uv/"
+  else
+    fail "uv not found — nothing else can be installed" "install uv: https://docs.astral.sh/uv/"
+  fi
 fi
 
 CGR="${CGR_BIN:-cgr}"
@@ -144,15 +151,14 @@ if command -v df >/dev/null 2>&1; then
 fi
 
 # Embedding is CPU-bound; the model wants ~1.5 GB RAM while it runs.
-if [ -r /proc/meminfo ]; then
+# /proc/meminfo inside WSL reports the VM's limit, not the machine's RAM, so ask
+# Windows first whenever a Windows powershell is reachable.
+MEM_GB=""
+if command -v powershell.exe >/dev/null 2>&1; then
+  MEM_GB="$(powershell.exe -NoProfile -Command "[math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB,0)" 2>/dev/null < /dev/null | tr -cd '0-9')"
+fi
+if [ -z "${MEM_GB:-}" ] && [ -r /proc/meminfo ]; then
   MEM_GB=$(( $(awk '/MemTotal/{print $2}' /proc/meminfo) / 1048576 ))
-elif [ "$OS_KIND" = "windows-msys" ]; then
-  PS="$(command -v powershell.exe || echo /c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe)"
-  # PowerShell can emit extra lines/warnings; keep digits only so the numeric
-  # tests below cannot see a stray newline and report "[: missing `]'".
-  MEM_GB="$("$PS" -NoProfile -Command "[math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory/1GB,0)" 2>/dev/null | tr -cd '0-9')"
-else
-  MEM_GB=""
 fi
 if [ -n "${MEM_GB:-}" ] && [ "$MEM_GB" -gt 0 ] 2>/dev/null; then
   if [ "$MEM_GB" -ge 8 ]; then pass "${MEM_GB} GB RAM (embedding runs on CPU)"
@@ -221,8 +227,9 @@ if [ -d "$CGR_HOME/workspaces" ]; then
             P="${p#*\"}"; P="${P%\"*}"
             [ -n "$P" ] || continue
             TOTAL=$((TOTAL+1))
-            # cgr writes native paths (D:\\money\\x); bash needs them normalised.
-            PB="$(printf '%s' "$P" | sed 's|\\\\|/|g; s|^\([A-Za-z]\):|/\L\1|')"
+            # The workspace file stores native paths (D:\\money\\x); this shell
+            # may be git-bash (/d/money/x) or WSL (/mnt/d/money/x).
+            PB="$(cgr_posix_path "$P")"
             [ -d "$PB" ] || [ -d "$P" ] || MISSING=$((MISSING+1))
             ;;
         esac
@@ -256,7 +263,9 @@ hdr "client wiring"
 if command -v hermes >/dev/null 2>&1; then
   pass "hermes CLI present"
   CFG="${LOCALAPPDATA:-}/hermes/config.yaml"
-  [ -f "$CFG" ] || CFG="$HOME_U/.hermes/config.yaml"
+  for CFG in "$CFG" "$HOME_U/AppData/Local/hermes/config.yaml" "$HOME_U/.hermes/config.yaml" "$HOME_U/.config/hermes/config.yaml"; do
+    [ -f "$CFG" ] && break
+  done
   if [ -f "$CFG" ]; then
     if grep -q "TARGET_REPO_PATH" "$CFG" 2>/dev/null; then
       pass "an MCP entry sets TARGET_REPO_PATH (required: clients spawn servers from the home dir)"
@@ -329,7 +338,7 @@ PY
       set -- $STATS
       N_CODE="${1:-0}"; N_DOC="${2:-0}"; N_OTHER="${3:-0}"; BYTES="${4:-0}"
       pass "files: $N_CODE code, $N_DOC markdown, $N_OTHER other (pdf/office/image/video)"
-      MB=$(( BYTES / 1048576 ))
+      MB=$(awk -v b="${BYTES:-0}" 'BEGIN{ printf "%d", b/1048576 }')
       # Calibration from a measured reference run: 196 code files yielded 1,313
       # functions (6.7/file), and embeddings settle at ~1.1/s on CPU. Only
       # functions and methods get an embedding, so estimate from those.

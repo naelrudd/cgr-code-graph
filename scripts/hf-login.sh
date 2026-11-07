@@ -36,9 +36,34 @@ case "${1:-login}" in
     cgr_tool_roots | sed 's/^/  - /'
     ;;
 
-  --status|status) exec "$PY" "$HF_PY" status ;;
-  --logout|logout) exec "$PY" "$HF_PY" logout ;;
-  login|"")        exec "$PY" "$HF_PY" login ;;
+  --status|status) "$PY" "$HF_PY" status ;;
+  --logout|logout) "$PY" "$HF_PY" logout ;;
+
+  login|"")
+    # The token is read by THIS shell, not by Python. Under WSL the Windows
+    # python.exe inherits neither the environment nor reliably the stdin of the
+    # bash that launched it, so handing the secret over inside the script is the
+    # only path that works on every bash-on-Windows. It travels through a
+    # 0600 temp file in the Windows profile (WSL's /tmp is invisible to
+    # python.exe) and is removed immediately after.
+    echo "Create a READ token at https://huggingface.co/settings/tokens -> New token -> Read."
+    printf 'token: '
+    stty -echo 2>/dev/null || true
+    IFS= read -r TOK
+    stty echo 2>/dev/null || true
+    printf '\n'
+    if [ -z "${TOK:-}" ]; then echo "aborted: empty token" >&2; exit 1; fi
+
+    TMPD="$(cgr_temp_dir)"
+    TF="$TMPD/cgr-hf-token-$$"
+    ( umask 077; printf '%s' "$TOK" > "$TF" ) || { echo "error: cannot write $TF" >&2; exit 1; }
+    TOK=""
+
+    "$PY" "$HF_PY" login --token-file "$(cgr_native_path "$TF")"
+    RC=$?
+    rm -f "$TF"
+    exit $RC
+    ;;
 
   *)
     echo "usage: hf-login.sh [login|--status|--logout|--where]" >&2
