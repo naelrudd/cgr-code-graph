@@ -3,7 +3,10 @@
 # Verified on Windows 11 + git-bash (MSYS) and Linux. macOS should be identical to Linux.
 set -euo pipefail
 
-UV_TOOL_NAME="code-graph-rag"
+# CGR_TOOL_NAME is the override every other script in the kit honours; without it
+# install.sh alone was untestable against a bogus name and could not be pointed at
+# a renamed tool env.
+UV_TOOL_NAME="${CGR_TOOL_NAME:-code-graph-rag}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=_common.sh
 . "$SCRIPT_DIR/_common.sh"
