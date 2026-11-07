@@ -5,6 +5,8 @@
 [![Platforms](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](#requirements)
 [![cgr](https://img.shields.io/badge/code--graph--rag-0.5.0-informational.svg)](https://github.com/vitali87/code-graph-rag)
 
+![cgr-code-graph](assets/social-preview.png)
+
 Turn a multi-project drive or monorepo into a queryable code graph — **local
 embeddings, no API key, no Docker, no Java, no GPU**.
 
