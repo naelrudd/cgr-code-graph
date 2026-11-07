@@ -99,7 +99,7 @@ jobs:
           hits="$(git grep -InE '(/c/Users/[A-Za-z0-9._-]+|/mnt/c/Users/[A-Za-z0-9._-]+|[Cc]:\\\\+Users\\\\+[A-Za-z0-9._-]+)' \
                     -- 'scripts/*' 'tests/*' 'docs/*' 'examples/*' \
                   | grep -vE ':[0-9]+:[[:space:]]*#' \
-                  | grep -vE '/c/Users/you|/c/Users/\$|/mnt/c/Users/\$|Users.you' || true)"
+                  | grep -vE '/c/Users/you|/c/Users/\$|/mnt/c/Users/\$|Users.(you|x)' || true)"
           if [ -n "$hits" ]; then
             printf '%s\n' "$hits"
             echo "::error::a hardcoded home path leaked into the repo"

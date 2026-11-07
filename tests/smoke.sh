@@ -36,7 +36,7 @@ case "$(uname -s)" in
   Linux)
     # WSL keeps Windows paths reachable under /mnt/<drive>; plain Linux does not.
     if [ -d /mnt/c ]; then
-      is "native: /mnt/c path -> drive path" "$(cgr_native_path '/mnt/c/Users/x')" 'C:\Users\x'
+      is "native: /mnt/c path -> drive path" "$(cgr_native_path '/mnt/c/Users/you')" 'C:\Users\you'
     fi
     ;;
 esac
