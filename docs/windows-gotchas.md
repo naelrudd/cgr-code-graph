@@ -175,7 +175,7 @@ Also note: `huggingface_hub.login(token=...)` **validates the token against the 
 `python.exe`, `git`, `rg`, `node` are native binaries; MSYS path conversion is off in scripts, so `/d/work/x.py` reaches them as `D:\d\work\x.py`:
 
 ```
-python.exe: can't open file 'D:\\d\\money\\x.py': [Errno 2] No such file or directory
+python.exe: can't open file 'D:\\work\\myrepo\\x.py': [Errno 2] No such file or directory
 ```
 
 Convert explicitly, and do it for every file argument:

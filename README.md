@@ -22,10 +22,10 @@ The upstream README assumes a single repo, a hosted embedder, and a working `oll
 git clone https://github.com/naelrudd/cgr-code-graph
 cd cgr-code-graph
 bash scripts/install.sh                      # uv tool + missing httpx + torch/transformers
-bash scripts/init-workspace.sh money D:/work # detect projects, register, start indexing
-bash scripts/register-mcp.sh money D:/work   # make it automatic (Hermes example)
-bash scripts/refresh.sh money                # later: incremental re-sync, seconds
-bash scripts/ask.sh money "where is X built?"  # CLI query, no agent needed
+bash scripts/init-workspace.sh work D:/work # detect projects, register, start indexing
+bash scripts/register-mcp.sh work D:/work   # make it automatic (Hermes example)
+bash scripts/refresh.sh work                 # later: incremental re-sync, seconds
+bash scripts/ask.sh work "where is X built?"  # CLI query, no agent needed
 ```
 
 PowerShell users: `pwsh -File scripts/install.ps1` (same steps).
@@ -47,7 +47,7 @@ The MCP server exposes 25 read-only tools. The ones that change how agents work:
 
 1. **Automatic (recommended).** Register `cgr mcp-server --read-only` with your agent. Tools then appear next to the built-in ones.
 2. **Contextual.** Drop a short "use cgr before grep" block into the repo's `CLAUDE.md` / `AGENTS.md` — see [`examples/CLAUDE.md`](examples/CLAUDE.md). This is what makes a *non*-`cgr`-aware agent reach for graph tools first.
-3. **Manual.** `bash scripts/ask.sh money "where is the listing search index built?"`
+3. **Manual.** `bash scripts/ask.sh work "where is the listing search index built?"`
 
 ## Requirements
 

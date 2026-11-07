@@ -82,5 +82,5 @@ number of functions in that file, not by the size of the corpus.
 habit is a refresh before a work session:
 
 ```bash
-bash scripts/refresh.sh money
+bash scripts/refresh.sh work
 ```
