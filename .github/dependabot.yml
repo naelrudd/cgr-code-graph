@@ -1,0 +1,17 @@
+# The only dependencies this repo pins are the actions in .github/workflows.
+# Everything else is installed by the user at run time, so a version bump here
+# is cheap to review and the alternative is a stale action nobody notices.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"
+    labels:
+      - dependencies
+    groups:
+      actions:
+        patterns:
+          - "*"
