@@ -161,6 +161,15 @@ Verify with `hermes mcp test cgr`. New tools only appear after `/reload-mcp` or 
 - **Never run two syncs at once.** Every project shares `graph.sqlite` + `vectors.sqlite`; two concurrent `cgr start --update-graph` contend on the SQLite write lock and both crawl — the symptom is a sync stuck 10+ minutes on a two-file repo. List strays with `powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Where-Object { $_.CommandLine -like '*cgr*' }"`; MSYS `ps -W` reports killed processes as alive, so trust the PowerShell listing.
 - **A sync never calls the LLM.** `graph_updater.py` has no orchestrator reference; `ORCHESTRATOR_PROVIDER` is read only in `cli.py` / `main.py` (assistant + `ask_agent`). A full build is tree-sitter/ast-grep parsing plus the local embedding model — no key, no network, no quota. So do not bother configuring `ORCHESTRATOR_*` before an overnight build, and if a sync looks like it waits on a model, it is really contending on `graph.sqlite` (next bullet).
 - **Keep exclude globs inside a script file.** `--exclude '**/node_modules/**'` typed by hand works; passed through a launcher that re-splits the command line (background job runner, `sh -c`, CI) the quotes die, the shell expands the pattern, and cgr dies with `Got unexpected extra argument(s)` listing hundreds of paths. Repo `scripts/index.sh` exists for exactly this.
+- **Quoting is not enough: cgr expands `--exclude` against the CURRENT DIRECTORY, not
+  against the repo being indexed.** A pattern that matches real paths under `cwd` is
+  expanded and the matches arrive as extra argv, so the run dies with the same
+  `Got unexpected extra argument(s)` even from a script with every glob quoted. Measured:
+  `--exclude '**/.git/**'` fails every time it is run from inside a git repo, because
+  `.git/**` matches the *kit's own* `.git` — paths from the cwd, not from the corpus.
+  Rules: never exclude `.git` (cgr skips it natively), never add a pattern for a
+  directory that exists in the directory you run from, and when a run dies with that
+  error, reproduce it from a neutral cwd (`cd /tmp`) before blaming your quoting.
 - **Convert paths before handing them to `cgr.exe`.** It is a native binary: `/d/work` and `/tmp/x` do not resolve, and under WSL `/mnt/d/work` resolves as `D:\mnt\d\work` — either way `workspace add-repo` fails silently per project. Use `scripts/_common.sh`'s `cgr_native_path` (branches on `cygpath -w` vs `wslpath -w`) and surface stderr instead of `>/dev/null 2>&1`. Same in reverse when reading `~/.cgr/workspaces/*.toml`, which stores `D:\\...` — convert with `wslpath -u` / `cygpath -u` before any `[ -d ]` test, or every repo reads as missing.
 - Progress check is a counter, not the log: `cgr_nodes` in `~/.cgr/graph.sqlite` climbs by thousands per minute when healthy.
 - `cgr workspace delete <name>` removes the definition but keeps indexed graph rows; `cgr workspace remove-repo` drops a single repo.
@@ -185,6 +194,12 @@ The short version:
   claiming either way:
   `select count(*) from cgr_edges e join cgr_nodes s on s.id=e.src join cgr_nodes d on d.id=e.dst where s.key not like d.key and d.label <> 'ExternalModule'`
   gives zero when every edge stays inside one project.
+  Measured on a two-package corpus, `--no-embeddings`: indexed as one root,
+  `IMPORTS -> [Module] xone.pkg_b.core` and `CALLS xone.pkg_a.app.run -> xone.pkg_b.core.helper`;
+  indexed as two projects, the same import is `IMPORTS -> [ExternalModule] pkg_b.core` and
+  there is no CALLS edge at all — same result for a Python absolute import and a JS relative
+  one. Pick the mode with the kit's script: `init-workspace.sh <ws> <root>` registers one
+  project per repo, `init-workspace.sh <ws> <root> --root` indexes the root as one project.
 - Merging everything into one root is not free: one namespace, one hash cache, `--clean`
   wipes the whole thing, and `--projects` filtering collapses to a single value. It only
   pays when the repos genuinely reference each other by an importable path; two projects

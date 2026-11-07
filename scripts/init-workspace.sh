@@ -1,14 +1,40 @@
 #!/usr/bin/env bash
 # Register a workspace spanning every project under a root directory, then index it.
 #
-#   bash scripts/init-workspace.sh <workspace> <root> [project ...]
+#   bash scripts/init-workspace.sh <workspace> <root> [project ...]     one project per repo
+#   bash scripts/init-workspace.sh <workspace> <root> --root            one project for the whole root
+#
+# --root changes what the graph can see. Imports and calls resolve by path against
+# the indexed root, so a directory that holds several packages must be indexed as
+# ONE repo for a sibling import to land on a real Module and a real CALLS edge —
+# e.g. Python `from pkg_b.core import helper`, or JS `from "../pkg_b/lib.js"`.
+# Registered as separate projects the same import becomes an ExternalModule stub
+# with no call edge. Measured with `tests/`-style probe corpora, not assumed.
+#
+# What it costs: one namespace. One hash cache instead of one per repo, `--clean`
+# wipes everything, no per-repo refresh, and `--projects` filtering collapses to a
+# single value. Merge only where the repos really import each other by path; two
+# projects that both depend on lodash gain nothing from sharing a root.
 #
 # With no project args, every direct child of <root> that looks like code is added
 # (has .git, package.json, pyproject.toml, requirements.txt, Cargo.toml, go.mod, or convex/).
 set -euo pipefail
 
-WS="${1:?usage: init-workspace.sh <workspace> <root> [project ...]}"
-ROOT="${2:?usage: init-workspace.sh <workspace> <root> [project ...]}"
+MODE=projects
+args=()
+for a in "$@"; do
+  case "$a" in
+    --root) MODE=root ;;
+    # Print the comment header only: stop at the first non-comment line so the
+    # usage text can never leak `set -euo pipefail` the way a fixed line range did.
+    -h|--help) awk 'NR > 1 { if ($0 !~ /^#/) exit; sub(/^# ?/, ""); print }' "$0"; exit 0 ;;
+    *) args+=("$a") ;;
+  esac
+done
+set -- ${args[@]+"${args[@]}"}
+
+WS="${1:?usage: init-workspace.sh <workspace> <root> [--root] [project ...]}"
+ROOT="${2:?usage: init-workspace.sh <workspace> <root> [--root] [project ...]}"
 shift 2
 
 CGR="${CGR_BIN:-cgr}"
@@ -22,7 +48,10 @@ native_path() {
 }
 ROOT_NATIVE="$(native_path "$ROOT")"
 
-if [ "$#" -gt 0 ]; then
+if [ "$MODE" = root ]; then
+  [ "$#" -eq 0 ] || { echo "error: --root indexes the whole root as one project; drop the project list ($*)" >&2; exit 1; }
+  PROJECTS=("$WS")
+elif [ "$#" -gt 0 ]; then
   PROJECTS=("$@")
 else
   PROJECTS=()
@@ -39,16 +68,33 @@ fi
 
 [ "${#PROJECTS[@]}" -gt 0 ] || { echo "error: found no projects under $ROOT" >&2; exit 1; }
 
-echo "==> workspace '$WS' over $ROOT: ${#PROJECTS[@]} projects"
+if [ "$MODE" = root ]; then
+  WHAT="one project for the whole root (sibling imports resolve)"
+else
+  WHAT="${#PROJECTS[@]} projects, one per repo"
+fi
+
+echo "==> workspace '$WS' over $ROOT — $WHAT"
 "$CGR" workspace create "$WS" -d "code graph over $ROOT" --force
 
-for p in "${PROJECTS[@]}"; do
-  if err="$("$CGR" workspace add-repo "$WS" "$ROOT_NATIVE/$p" 2>&1 >/dev/null)"; then
-    echo "    + $p"
+if [ "$MODE" = root ]; then
+  # One repo entry for the whole root: the root becomes the project namespace, which
+  # is what lets a sibling import resolve instead of degrading to an external stub.
+  if err="$("$CGR" workspace add-repo "$WS" "$ROOT_NATIVE" -p "$WS" 2>&1 >/dev/null)"; then
+    echo "    + $WS <- $ROOT (single root)"
   else
-    echo "    ! $p — add-repo failed: $(printf '%s' "$err" | tail -1)"
+    echo "    ! add-repo failed for $ROOT — $(printf '%s' "$err" | tail -1)" >&2
+    exit 1
   fi
-done
+else
+  for p in "${PROJECTS[@]}"; do
+    if err="$("$CGR" workspace add-repo "$WS" "$ROOT_NATIVE/$p" 2>&1 >/dev/null)"; then
+      echo "    + $p"
+    else
+      echo "    ! $p — add-repo failed: $(printf '%s' "$err" | tail -1)"
+    fi
+  done
+fi
 
 echo
 echo "==> indexing via scripts/index.sh (first pass on a large corpus runs for hours)."

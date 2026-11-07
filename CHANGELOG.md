@@ -9,8 +9,28 @@ release it installs.
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/init-workspace.sh <workspace> <root> --root` indexes the root itself as
+  a single project instead of registering one project per repo. Imports and calls
+  resolve by path against the indexed root, so a directory holding several
+  packages needs this for a sibling import to land on a real `Module` and a real
+  `CALLS` edge. Measured on a two-package corpus: as one root,
+  `IMPORTS -> [Module] xone.pkg_b.core` and
+  `CALLS xone.pkg_a.app.run -> xone.pkg_b.core.helper`; registered as two
+  projects, the same import becomes `IMPORTS -> [ExternalModule] pkg_b.core` and
+  the call edge is absent (18 edges as one root, 14 as two).
+  `tests/smoke.sh` drives the script against a stub `cgr` and asserts the argv it
+  builds, so the mode is covered without running a real index.
+
 ### Fixed
 
+- `--exclude` globs are expanded by cgr against the **current directory**, not the
+  repo being indexed, so any pattern matching a real path under `cwd` was injected
+  as extra argv and killed the run with `Got unexpected extra argument(s)`.
+  `--exclude '**/.git/**'` failed on every run started from inside a git repo —
+  quoting the pattern did not help. Never exclude `.git` (cgr skips it natively);
+  the trap is documented in `skills/cgr-code-graph/SKILL.md`.
 - `cgr_posix_path`'s no-converter fallback (plain Linux, containers) left a
   single-backslash Windows path half-converted — `D:\work\x` became `/d/\work\x`.
   The old sed pattern was written as four escaped backslashes, so it only matched

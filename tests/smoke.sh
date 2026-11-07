@@ -131,6 +131,87 @@ case "$SHIM_POSIX" in
 esac
 is "shim dir conversion is stable" "$(cgr_posix_path "$SHIM_POSIX")" "$SHIM_POSIX"
 
+echo "== workspace mode"
+
+# init-workspace.sh decides what the graph can see: one project per repo, or the
+# whole root as one project. Drive it against a stub cgr that records argv, so the
+# assertion is about the command it builds, not about a 25-project index.
+WSROOT="$(cgr_posix_path "${TMPDIR:-/tmp}")/cgr-ws-mode"
+rm -rf "$WSROOT"; mkdir -p "$WSROOT/corpus/proj_a/.git" "$WSROOT/corpus/proj_b" "$WSROOT/bin"
+: > "$WSROOT/corpus/proj_b/package.json"
+: > "$WSROOT/calls.log"
+cat > "$WSROOT/bin/cgr" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$CGR_CALLS"
+STUB
+chmod +x "$WSROOT/bin/cgr"
+export CGR_CALLS="$WSROOT/calls.log"
+
+CGR_BIN="$WSROOT/bin/cgr" bash "$KIT/scripts/init-workspace.sh" wsproj "$WSROOT/corpus" >/dev/null 2>&1
+ADDS="$(grep -c 'workspace add-repo' "$WSROOT/calls.log" 2>/dev/null || printf 0)"
+is "default mode adds one repo per project" "$ADDS" "2"
+
+: > "$WSROOT/calls.log"
+CGR_BIN="$WSROOT/bin/cgr" bash "$KIT/scripts/init-workspace.sh" wsroot "$WSROOT/corpus" --root >/dev/null 2>&1
+ADDS="$(grep -c 'workspace add-repo' "$WSROOT/calls.log" 2>/dev/null || printf 0)"
+is "--root adds exactly one repo" "$ADDS" "1"
+has "--root registers the root itself, not a child" "$(grep 'workspace add-repo' "$WSROOT/calls.log" || true)" "corpus"
+case "$(grep 'workspace add-repo' "$WSROOT/calls.log" || true)" in
+  *proj_a*|*proj_b*) bad "--root does not fall back to per-project entries" "got a child path" ;;
+  *)                 ok  "--root does not fall back to per-project entries" ;;
+esac
+
+OUT="$(CGR_BIN="$WSROOT/bin/cgr" bash "$KIT/scripts/init-workspace.sh" wsbad "$WSROOT/corpus" --root proj_a 2>&1)"
+no "--root with an explicit project list is rejected" "$?" "$OUT"
+
+rm -rf "$WSROOT"
+
+echo "== index.sh stays non-interactive"
+
+# cgr 0.5.0 syncs a workspace with `start --workspace X --update-graph` and then
+# STARTS THE ASSISTANT, which is fatal for a background job (the assistant
+# validates an LLM provider and exits non-zero after a good sync). index.sh must
+# therefore sync per repo with --repo-path, under the project_name the workspace
+# file recorded. Stub cgr again, so the assertion is about the argv it builds.
+IDXROOT="$(cgr_posix_path "${TMPDIR:-/tmp}")/cgr-index-mode"
+rm -rf "$IDXROOT"; mkdir -p "$IDXROOT/home/workspaces" "$IDXROOT/bin"
+: > "$IDXROOT/calls.log"
+printf '%s\n' \
+  '[workspace]' 'name = "wsidx"' '' \
+  '[[workspace.repos]]' 'path = "C:\\work\\api"' 'project_name = "api__1a2b3c4d"' 'project_named = false' '' \
+  '[[workspace.repos]]' 'path = "C:\\work\\web"' 'project_name = "web__5e6f7a8b"' 'project_named = false' \
+  > "$IDXROOT/home/workspaces/wsidx.toml"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "$CGR_CALLS"\nexit "${STUB_EXIT:-0}"\n' > "$IDXROOT/bin/cgr"
+chmod +x "$IDXROOT/bin/cgr"
+export CGR_CALLS="$IDXROOT/calls.log"
+
+CGR_HOME="$IDXROOT/home" CGR_BIN="$IDXROOT/bin/cgr" bash "$KIT/scripts/index.sh" wsidx >/dev/null 2>&1
+yes "index.sh exits 0 on a stubbed sync" "$?"
+is "one cgr start per repo" "$(grep -c '^start ' "$IDXROOT/calls.log" 2>/dev/null || printf 0)" "2"
+CALLS="$(cat "$IDXROOT/calls.log")"
+case "$CALLS" in
+  *--workspace*) bad "no workspace-mode sync (it starts the assistant)" ;;
+  *)             ok  "no workspace-mode sync (it starts the assistant)" ;;
+esac
+has "each repo is synced in repo mode under its recorded name" "$CALLS" \
+    "--repo-path C:/work/api --project-name api__1a2b3c4d"
+case "$CALLS" in
+  *'C:\work'*) bad "toml backslashes are unescaped before use" "got doubled separators" ;;
+  *)           ok  "toml backslashes are unescaped before use" ;;
+esac
+is "every repo is asked to update the graph" \
+   "$(printf '%s\n' "$CALLS" | grep -c -- '--update-graph')" "2"
+
+: > "$IDXROOT/calls.log"
+STUB_EXIT=1 CGR_HOME="$IDXROOT/home" CGR_BIN="$IDXROOT/bin/cgr" bash "$KIT/scripts/index.sh" wsidx >/dev/null 2>&1
+no "a failed repo makes index.sh fail" "$?"
+
+OUT="$(CGR_HOME="$IDXROOT/home" CGR_BIN="$IDXROOT/bin/cgr" bash "$KIT/scripts/index.sh" nope 2>&1)"
+no "unknown workspace is an error, not a silent no-op" "$?"
+has "the error names the workspace file" "$OUT" "nope.toml"
+
+rm -rf "$IDXROOT"
+
 echo "== portability rules"
 
 # The author's own machine must not be in the scripts. Comments are excluded:

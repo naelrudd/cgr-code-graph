@@ -32,6 +32,7 @@ An LLM endpoint is optional and only used by `ask_agent`.
 
 - [Quick start](#quick-start)
 - [What you get](#what-you-get)
+- [One root, or one project per repo](#one-root-or-one-project-per-repo)
 - [Measured, not promised](#measured-not-promised)
 - [Three usage layers](#three-usage-layers)
 - [Requirements](#requirements)
@@ -55,6 +56,11 @@ bash scripts/register-mcp.sh work D:/work     # make it automatic (Hermes shown;
 bash scripts/refresh.sh work                  # later: incremental re-sync, seconds
 bash scripts/ask.sh work "where is X built?"  # one question, no agent session
 ```
+
+`init-workspace.sh` defaults to **one project per repo** under the root. Add
+`--root` to index the root itself as a single project instead — read
+[One root, or one project per repo](#one-root-or-one-project-per-repo) before
+choosing, because it decides whether cross-package imports resolve.
 
 PowerShell: `pwsh -File scripts/install.ps1` covers the install half; the other
 scripts run under git-bash or WSL.
@@ -84,6 +90,37 @@ how an agent works:
 | `ask_agent` | the whole graph as a chat target (needs an LLM endpoint) |
 | `explain_traceback` / `rank_root_causes` | traceback → graph correlation |
 | `flow_verdict` | source-to-sink reachability for a sanitizer question |
+
+## One root, or one project per repo
+
+Imports and calls are resolved **by path against the root you indexed**, so this
+choice decides what the graph can see:
+
+```bash
+bash scripts/init-workspace.sh work D:/work            # one project per repo (default)
+bash scripts/init-workspace.sh work D:/packages --root  # the whole root as one project
+```
+
+Measured on a two-package corpus (4 files, `--no-embeddings`): one Python absolute
+import and one JS relative import, each crossing the package boundary.
+
+| indexed as | import edge | call edge |
+| --- | --- | --- |
+| root itself (`--root`) | `IMPORTS -> [Module] e2e.pkg_b.core` | `CALLS e2e.pkg_a.app.run -> e2e.pkg_b.core.helper` |
+| two projects | `IMPORTS -> [ExternalModule] pkg_b.core` | none — the call edge does not exist |
+
+The JavaScript pair behaves the same way (`Module` + `CALLS` under one root,
+`ExternalModule` and no call edge under two). 18 edges indexed as one root, 14 as
+two projects: the four that vanish are the two imports and the two calls that
+crossed the package boundary.
+
+So an unreferenced-looking function in a monorepo, a workspace, or a parent
+directory holding several packages is usually an indexing decision, not a
+limitation. `--root` costs you one namespace: a single hash cache, `--clean`
+wipes everything, and there is no per-repo refresh or per-repo file counts.
+
+Merge only where the repos genuinely import each other by path. Two projects that
+each depend on `lodash` gain nothing from sharing a root.
 
 ## Measured, not promised
 
@@ -145,6 +182,7 @@ bash scripts/doctor.sh D:/work    # environment + corpus size and a runtime esti
 | `Configuration error: The MCP server was started in C:\Users\...` | clients spawn servers from the home dir, and cgr refuses to serve there | pass `TARGET_REPO_PATH`, as `register-mcp.sh` does |
 | a sync stuck 10+ minutes on a two-file repo | two syncs contending on `graph.sqlite` | let one finish; `doctor.sh` lists strays |
 | `Got unexpected extra argument(s)` | the exclude globs were re-split by a launcher | run `scripts/index.sh`, which keeps them quoted |
+| `ValueError: Ollama server not responding` *after* a good sync | `cgr start --workspace ... --update-graph` starts the assistant once the sync ends; it validates an LLM provider before reading input | `scripts/index.sh` syncs repo by repo instead, and exits |
 | `Unknown openai model '<id>'` | `ORCHESTRATOR_PROVIDER=openai` only accepts its own model list | use `litellm_proxy` for a custom endpoint |
 
 The mechanism behind each: [`docs/windows-gotchas.md`](docs/windows-gotchas.md).
