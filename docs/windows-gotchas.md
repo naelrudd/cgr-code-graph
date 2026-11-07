@@ -154,6 +154,39 @@ uv pip install --python "$(uv tool dir)/code-graph-rag/Scripts/python.exe" ast-g
 
 Existing nodes are not retro-fixed: run one more `--update-graph` (the hash cache will re-parse only what changed... which is nothing, so use `cgr workspace remove-repo` + `add-repo` for that project, or `--clean` on a small corpus).
 
+## 11. Shell redirection to a Windows path creates junk files (and leaks secrets)
+
+`bash` on Windows is either MSYS (git-bash) or WSL, and neither understands `C:\...` as a path. This does not fail — it succeeds and creates a file whose **name** is the path:
+
+```bash
+# in WSL, this wrote a file named "C:Users<you>.cachehuggingfacetoken" into the repo root
+echo "$TOKEN" > "C:\Users\me\.cache\huggingface\token"
+```
+
+If the payload is a credential, you now have a plaintext token sitting inside the working tree (`git status` shows it as `??`, and a careless `git add -A` commits it). Two rules:
+
+- Write user-level files with Python, not with shell redirection: `python -c "import pathlib,os; p=pathlib.Path(os.path.expanduser('~/.cache/huggingface/token')); p.parent.mkdir(parents=True,exist_ok=True); p.write_text(tok)"` — Python resolves `~` for the platform it actually runs on.
+- `scripts/doctor.sh` flags any file in the cwd that looks like a Windows path used as a name, and tells you to delete it.
+
+Also note: `huggingface_hub.login(token=...)` **validates the token against the Hub before saving**, so a wrong or expired token never reaches the disk. If you see `HfHubHTTPError: Invalid user token`, the token itself is bad — nothing was stored.
+
+## 12. POSIX paths passed to a native program are not translated
+
+`python.exe`, `git`, `rg`, `node` are native binaries; MSYS path conversion is off in scripts, so `/d/work/x.py` reaches them as `D:\d\work\x.py`:
+
+```
+python.exe: can't open file 'D:\\d\\money\\x.py': [Errno 2] No such file or directory
+```
+
+Convert explicitly, and do it for every file argument:
+
+```bash
+native() { if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
+python.exe "$(native ./scripts/helper.py)"
+```
+
+`scripts/_common.sh` exposes this as `cgr_native_path`.
+
 ## Bonus: `cgr doctor` / `cgr status` noise
 
 - `cgr doctor` reports `orchestrator: ollama:llama3.2` and `:11434 connection refused` by default. Harmless if you never call `ask_agent`.

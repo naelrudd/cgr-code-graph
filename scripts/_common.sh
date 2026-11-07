@@ -7,6 +7,17 @@
 # that trust $HOME report "tool venv not found" on a perfectly good install, so
 # the profile is resolved by asking Windows, not by trusting the environment.
 
+# Convert a path for a NATIVE (non-MSYS) program. MSYS path conversion is off in
+# scripts, so /d/money/x reaches python.exe as D:\d\money\x and the file is not
+# found. Always pass file arguments through this.
+cgr_native_path() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -w "$1" 2>/dev/null || printf '%s' "$1"
+  else
+    printf '%s' "$1"
+  fi
+}
+
 # Value of a Windows path env var, verbatim; empty when unknown.
 cgr_win_var() {
   local name="$1" v=""

@@ -162,6 +162,26 @@ fi
 
 hdr "state"
 
+# Shell redirection to a Windows path from WSL/MSYS bash does not fail: it
+# creates a file whose NAME is "C:Usersyou.cachehuggingfacetoken" in the current
+# directory. That is how a plaintext token ends up sitting inside a repo.
+STRAYF="$("$TOOL_PY" - "$(cgr_native_path "$(pwd)")" <<'PY' 2>/dev/null || true
+import os, sys
+try:
+    names = os.listdir(sys.argv[1])
+except OSError:
+    raise SystemExit(0)
+bad = [n for n in names if n.startswith("C:") or (n.startswith("C") and "Users" in n)]
+print("\n".join(bad))
+PY
+)"
+if [ -n "${STRAYF//[$'\r\n ']/}" ]; then
+  warn "file(s) in $(pwd) look like a Windows path used as a filename: $(printf '%s' "$STRAYF" | tr '\n' ' ')" \
+       "shell redirection to C:\\... from this shell creates junk files here - they may hold secrets; delete them"
+else
+  pass "no stray Windows-path filenames in $(pwd)"
+fi
+
 # Stray syncs are the single most common cause of a "hung" build.
 STRAY=""
 if [ "$OS_KIND" = "windows-msys" ]; then
