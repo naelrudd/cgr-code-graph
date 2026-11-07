@@ -72,3 +72,8 @@ operating guidance in `docs/`, mirror the durable part there in the same PR.
 Use the issue template — it asks for the two things that make these reports
 actionable: the output of `bash scripts/doctor.sh` and the exact error text. For
 a suspected security problem, follow [`SECURITY.md`](SECURITY.md) instead.
+
+## Code of conduct
+
+Participation is covered by [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md). Reports go
+to the maintainer privately, not into a thread.

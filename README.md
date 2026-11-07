@@ -114,7 +114,7 @@ Full measurements, including the throughput math for sizing your own corpus:
 - `uv` — it installs everything else
 - ~1.1 GB disk for `torch` + `transformers` + the embedding model
 - Python 3.11+ (managed by `uv`); Windows, macOS or Linux
-- An [OI]-compatible endpoint **only** for `ask_agent` / NL→Cypher. Graph building
+- An OpenAI-compatible endpoint **only** for `ask_agent` / NL→Cypher. Graph building
   and the deterministic tools need no LLM at all.
 
 ## When not to use this
@@ -180,7 +180,8 @@ Report a vulnerability through GitHub's private advisory flow, not a public issu
 
 The most valuable contribution here is a pitfall with its exact error string, or a
 measured number. See [`CONTRIBUTING.md`](CONTRIBUTING.md) — it lists the commands
-CI runs and the portability rules that are not negotiable.
+CI runs and the portability rules that are not negotiable. Participation is
+covered by [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
 
 ## Credit
 
