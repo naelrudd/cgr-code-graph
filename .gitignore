@@ -15,9 +15,16 @@
 token
 tokens
 stored_tokens
+*.token
 C:*
 CUsers*
 secrets.*
+credentials.json
+.netrc
+id_rsa
+id_ed25519
+*.jks
+*.sqlite3
 
 # local verification scratch
 tmp/

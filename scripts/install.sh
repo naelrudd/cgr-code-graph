@@ -20,7 +20,19 @@ uv tool install "${UV_TOOL_NAME}[treesitter-full,sqlite-vec,ast-grep]" || uv too
 
 # The wheel imports httpx from tools/health_checker.py but does not depend on it,
 # so every command dies with ModuleNotFoundError until it is present in the tool venv.
-TOOL_PY="$(cgr_tool_python || true)"
+# Bind the interpreter to the venv this run just installed. `cgr_tool_python`
+# searches several roots (including, historically, other profiles) and returns
+# the first executable it finds, so it must not be trusted to identify the venv
+# that `uv tool install` above was supposed to create.
+TOOL_PY=""
+TOOL_ROOT="$(uv tool dir 2>/dev/null | tr -d '\r')"
+for cand in "$TOOL_ROOT/${UV_TOOL_NAME}/Scripts/python.exe" "$TOOL_ROOT/${UV_TOOL_NAME}/bin/python"; do
+  [ -x "$cand" ] && { TOOL_PY="$cand"; break; }
+done
+if [ -z "$TOOL_PY" ]; then
+  TOOL_PY="$(cgr_tool_python || true)"
+  echo "warn: ${UV_TOOL_NAME} not found under '${TOOL_ROOT}' — falling back to ${TOOL_PY:-nothing}" >&2
+fi
 if [ -z "$TOOL_PY" ] || [ ! -x "$TOOL_PY" ]; then
   echo "error: could not locate the tool venv python (searched $(cgr_tool_roots | tr '\n' ' '))" >&2
   exit 1

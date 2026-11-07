@@ -171,7 +171,8 @@ hdr "state"
 # Shell redirection to a Windows path from WSL/MSYS bash does not fail: it
 # creates a file whose NAME is "C:Usersyou.cachehuggingfacetoken" in the current
 # directory. That is how a plaintext token ends up sitting inside a repo.
-STRAYF="$("$TOOL_PY" - "$(cgr_native_path "$(pwd)")" <<'PY' 2>/dev/null || true
+if [ -x "$TOOL_PY" ]; then
+  STRAYF="$("$TOOL_PY" - "$(cgr_native_path "$(pwd)")" <<'PY' 2>/dev/null || true
 import os, sys
 try:
     names = os.listdir(sys.argv[1])
@@ -181,8 +182,18 @@ bad = [n for n in names if n.startswith("C:") or (n.startswith("C") and "Users" 
 print("\n".join(bad))
 PY
 )"
-if [ -n "${STRAYF//[$'\r\n ']/}" ]; then
-  warn "file(s) in $(pwd) look like a Windows path used as a filename: $(printf '%s' "$STRAYF" | tr '\n' ' ')" \
+else
+  STRAYF=""
+fi
+if [ ! -x "$TOOL_PY" ]; then
+  # Fail closed: an empty result here means "could not look", not "nothing found".
+  warn "cannot check for stray Windows-path filenames: the tool venv python is missing" \
+       "fix the FAIL above, then re-run"
+elif [ -n "${STRAYF//[$'\r\n ']/}" ]; then
+  # A filename is attacker-controlled content (a cloned repo can carry one), and
+  # a terminal executes ESC/CSI/OSC/BEL sequences it is handed. Strip them: this
+  # check exists to report odd names, not to relay them to the terminal.
+  warn "file(s) in $(pwd) look like a Windows path used as a filename: $(printf '%s' "$STRAYF" | tr '\n' ' ' | LC_ALL=C tr -cd '[:print:]')" \
        "shell redirection to C:\\... from this shell creates junk files here - they may hold secrets; delete them"
 else
   pass "no stray Windows-path filenames in $(pwd)"
@@ -245,9 +256,11 @@ if [ -d "$CGR_HOME/workspaces" ]; then
 fi
 
 if [ -f "$CGR_HOME/graph.sqlite" ]; then
-  CN="$("$TOOL_PY" - <<'PY' 2>/dev/null || true
-import os, sqlite3
-p = os.path.join(os.path.expanduser("~"), ".cgr", "graph.sqlite")
+  CN="$("$TOOL_PY" - "$(cgr_native_path "$CGR_HOME")" <<'PY' 2>/dev/null || true
+import os, sqlite3, sys
+# Honour CGR_HOME like the rest of the script: the count must come from the store
+# being checked, not from whatever happens to sit in ~/.cgr.
+p = os.path.join(sys.argv[1], "graph.sqlite")
 try:
     c = sqlite3.connect("file:" + p + "?mode=ro", uri=True)
     print(c.execute("select count(*) from cgr_nodes").fetchone()[0])
@@ -286,8 +299,10 @@ fi
 
 if command -v hermes >/dev/null 2>&1; then
   pass "hermes CLI present"
-  CFG="${LOCALAPPDATA:-}/hermes/config.yaml"
-  for CFG in "$CFG" "$HOME_U/AppData/Local/hermes/config.yaml" "$HOME_U/.hermes/config.yaml" "$HOME_U/.config/hermes/config.yaml"; do
+  # ${LOCALAPPDATA:+...} not ${LOCALAPPDATA:-...}: with the variable unset the
+  # latter degrades to the absolute path /hermes/config.yaml and can win the test.
+  CFG=""
+  for CFG in "${LOCALAPPDATA:+$LOCALAPPDATA/hermes/config.yaml}" "$HOME_U/AppData/Local/hermes/config.yaml" "$HOME_U/.hermes/config.yaml" "$HOME_U/.config/hermes/config.yaml"; do
     [ -f "$CFG" ] && break
   done
   if [ -f "$CFG" ]; then

@@ -152,6 +152,8 @@ A shell script in the graph as a bare `File` node is invisible to `semantic_sear
 uv pip install --python "$(uv tool dir)/code-graph-rag/Scripts/python.exe" ast-grep-py
 ```
 
+Resolve the interpreter with `uv tool dir`, not `$APPDATA`: under git-bash/WSL that variable is often empty or points at an MSYS shadow path, and the install then lands in a venv nothing uses. The canonical extra set is `[treesitter-full,sqlite-vec,ast-grep]` — the same one `scripts/install.sh` installs.
+
 Existing nodes are not retro-fixed: run one more `--update-graph` (the hash cache will re-parse only what changed... which is nothing, so use `cgr workspace remove-repo` + `add-repo` for that project, or `--clean` on a small corpus).
 
 ## 11. Shell redirection to a Windows path creates junk files (and leaks secrets)

@@ -10,9 +10,11 @@ Use when the task is "embed the whole repo", "ask questions across projects", de
 ## Install (Windows)
 
 ```bash
-uv tool install "code-graph-rag[treesitter-full,sqlite-vec]"
-uv pip install --python "$APPDATA/uv/tools/code-graph-rag/Scripts/python.exe" httpx
+uv tool install "code-graph-rag[treesitter-full,sqlite-vec,ast-grep]"
+uv pip install --python "$(uv tool dir)/code-graph-rag/Scripts/python.exe" httpx
 ```
+
+That extra set is the one `scripts/install.sh` uses — keep them identical, or the effective dependency set depends on which document was followed. `sqlite-vec` is the vector store, `treesitter-full` the parser bundle, `ast-grep` the shell/nix tier (without it those files land as bare `File` nodes).
 
 The `httpx` injection is required: v0.5.0 crashes on every command with `ModuleNotFoundError: No module named 'httpx'` because `tools/health_checker.py` imports it but the wheel omits it. Same venv takes `torch` + `transformers` for local embeddings (~1 GB, no GPU needed).
 

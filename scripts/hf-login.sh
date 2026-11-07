@@ -82,7 +82,14 @@ EOF
     if [ -z "${TOK:-}" ]; then echo "aborted: nothing was pasted (empty input)" >&2; exit 1; fi
 
     TMPD="$(cgr_temp_dir)"
-    TF="$TMPD/cgr-hf-token-$$"
+    # mktemp creates the file with O_EXCL and mode 0600, so a second local user
+    # cannot pre-create the path or plant a symlink at it. A PID-derived name is
+    # guessable and, in a shared TMPDIR, would be written through.
+    TF="$(umask 077; mktemp "$TMPD/cgr-hf-token.XXXXXXXX" 2>/dev/null)" || TF=""
+    [ -n "$TF" ] || { echo "error: cannot create a private temp file in $TMPD" >&2; exit 1; }
+    # Covers the interrupt window: without a trap, Ctrl-C between the write and
+    # the rm leaves the plaintext token behind.
+    trap 'rm -f "$TF"' EXIT INT TERM HUP
     ( umask 077; printf '%s' "$TOK" > "$TF" ) || { echo "error: cannot write $TF" >&2; exit 1; }
     TOK=""
 

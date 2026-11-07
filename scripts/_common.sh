@@ -86,9 +86,28 @@ cgr_win_var() {
   [ -n "$v" ] && printf '%s' "$v"
 }
 
+# Name of the account running this shell; empty when it cannot be determined.
+# Every path this kit builds is derived from a profile directory, so the profile
+# must be tied to an identity. A directory listing is not an identity: on a
+# shared host the first /c/Users/* that happens to contain a uv install may
+# belong to a different local user, and the kit would then run that account's
+# executables and write this user's graph into a directory it can read.
+cgr_self_user() {
+  local v
+  for v in USERPROFILE USERNAME USER LOGNAME; do
+    case "$v" in
+      USERPROFILE|USERNAME) v="$(cgr_win_var "$v")" ;;
+      *) v="$(eval "printf '%s' \"\${$v:-}\"")" ;;
+    esac
+    v="${v##*[\\/]}"
+    [ -n "$v" ] && { printf '%s' "$v"; return 0; }
+  done
+  return 1
+}
+
 # The real user profile in POSIX form (/c/Users/you).
 cgr_home() {
-  local v raw u
+  local v raw u me
   for v in USERPROFILE LOCALAPPDATA APPDATA; do
     raw="$(cgr_win_var "$v")"
     [ -n "$raw" ] || continue
@@ -107,19 +126,18 @@ cgr_home() {
     /home/*|/root) ;;
     *) [ -d "${HOME:-/nonexistent}" ] && { printf '%s' "$HOME"; return 0; } ;;
   esac
-  # Last resort: the mounted Windows user directory that actually owns a uv
-  # install or an existing graph. Skip the system profiles (All Users, Public,
-  # Default) which match the glob too and would poison every later path.
-  local best=""
-  for u in /c/Users/* /mnt/c/Users/*; do
-    [ -d "$u" ] || continue
-    case "${u##*/}" in All\ Users|Default|Default\ User|defaultuser0|Public|WDAGUtilityAccount) continue ;; esac
-    if [ -d "$u/AppData/Roaming/uv" ] || [ -d "$u/.cgr" ] || [ -d "$u/.local/bin" ]; then
-      best="$u"; break
-    fi
-    [ -z "$best" ] && best="$u"
-  done
-  [ -n "$best" ] && { printf '%s' "$best"; return 0; }
+  # Last resort: THIS user's mounted Windows profile, and only that one. The name
+  # comes from the account, never from a directory listing: accepting the first
+  # /c/Users/* that merely looks plausible would hand a second local account the
+  # ability to have its home, and its executables, treated as this user's.
+  me="$(cgr_self_user || true)"
+  if [ -n "$me" ]; then
+    for u in "/c/Users/$me" "/mnt/c/Users/$me"; do
+      [ -d "$u" ] || continue
+      [ -d "$u/AppData/Roaming/uv" ] || [ -d "$u/.cgr" ] || [ -d "$u/.local/bin" ] || continue
+      printf '%s' "$u"; return 0
+    done
+  fi
   printf '%s' "$HOME"
 }
 
@@ -133,38 +151,51 @@ cgr_uv() {
   done
   if command -v cmd >/dev/null 2>&1; then
     w="$(cmd //c "where uv" 2>/dev/null < /dev/null | tr -d '\r' | head -1)"
+    # `where` searches the current directory before PATH, so a cloned repository
+    # that ships its own uv.exe would win. Only trust an absolute hit, and never
+    # one inside the tree we happen to be standing in.
+    case "$w" in /*|[A-Za-z]:*) ;; *) w="" ;; esac
     if [ -n "$w" ]; then
       command -v cygpath >/dev/null 2>&1 && w="$(cygpath -u "$w" 2>/dev/null)"
-      [ -x "$w" ] && { printf '%s' "$w"; return 0; }
+      case "$w" in "$(pwd)"/*) w="" ;; esac
+      [ -n "$w" ] && [ -x "$w" ] && { printf '%s' "$w"; return 0; }
     fi
   fi
   return 1
 }
 
 # Every place a uv tool venv may plausibly live, one per line.
+# Deliberately NOT a wildcard over /c/Users/*: cgr_tool_python executes the first
+# interpreter it finds, so a foreign profile's venv would run as this user.
 cgr_tool_roots() {
-  local h u r
+  local h u r me
   h="$(cgr_home)"
-  u="$(cgr_uv 2>/dev/null || true)"
-  if [ -n "$u" ]; then
-    r="$("$u" tool dir 2>/dev/null | tr -d '\r')"
-    [ -n "$r" ] && printf '%s\n' "$r"
-  fi
-  for r in \
-    "${APPDATA:-}/uv/tools" \
-    "${LOCALAPPDATA:-}/uv/tools" \
-    "$h/AppData/Roaming/uv/tools" \
-    "$h/AppData/Local/uv/tools" \
-    "$h/.local/share/uv/tools" \
-    "$h/Library/Application Support/uv/tools" \
-    /c/Users/*/AppData/Roaming/uv/tools \
-    /mnt/c/Users/*/AppData/Roaming/uv/tools \
-    /usr/local/share/uv/tools \
-    /root/.local/share/uv/tools
-  do
-    case "$r" in /uv/tools|"") continue ;; esac
-    printf '%s\n' "$r"
-  done | awk '!seen[$0]++'
+  me="$(cgr_self_user || true)"
+  {
+    u="$(cgr_uv 2>/dev/null || true)"
+    if [ -n "$u" ]; then
+      r="$("$u" tool dir 2>/dev/null | tr -d '\r')"
+      [ -n "$r" ] && printf '%s\n' "$r"
+    fi
+    for r in \
+      "${APPDATA:-}/uv/tools" \
+      "${LOCALAPPDATA:-}/uv/tools" \
+      "$h/AppData/Roaming/uv/tools" \
+      "$h/AppData/Local/uv/tools" \
+      "$h/.local/share/uv/tools" \
+      "$h/Library/Application Support/uv/tools" \
+      /usr/local/share/uv/tools \
+      /root/.local/share/uv/tools
+    do
+      case "$r" in /uv/tools|"") continue ;; esac
+      printf '%s\n' "$r"
+    done
+    if [ -n "$me" ]; then
+      for r in "/c/Users/$me/AppData/Roaming/uv/tools" "/mnt/c/Users/$me/AppData/Roaming/uv/tools"; do
+        [ -d "$r" ] && printf '%s\n' "$r"
+      done
+    fi
+  } | awk '!seen[$0]++'
 }
 
 # Path to the tool venv python; exits non-zero when it cannot be found.
