@@ -1,5 +1,10 @@
-# Shell scripts must survive a Windows checkout: CRLF makes bash fail on the
-# shebang and on every `set -euo pipefail` line.
-* text=auto
-*.sh text eol=lf
+# One line-ending policy for the whole tree: LF in the repository and in every
+# working copy, so a Windows checkout cannot hand bash a CRLF shebang (which
+# fails as "bad interpreter") and diffs stay readable.
+* text=auto eol=lf
+
+# Windows PowerShell 5.1 parses a CRLF script reliably; LF is the safer default
+# everywhere else, including PowerShell 7.
 *.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
