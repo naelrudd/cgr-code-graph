@@ -2,8 +2,44 @@
 *.sqlite
 *.sqlite-*
 *.db
+.embedding_cache.json
+
+# secrets: a token written by shell redirection on Windows becomes a file NAMED
+# "C:Users<you>.cachehuggingfacetoken" in whatever directory the command ran from
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+token
+tokens
+stored_tokens
+C:*
+CUsers*
+secrets.*
 
 # local verification scratch
 tmp/
+.tmp/
 scratch/
 *.log
+*.orig
+*.rej
+.cgr-kit/
+cgr-kit.toml
+
+# python / node / editors / OS
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+node_modules/
+.npm/
+*.tsbuildinfo
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

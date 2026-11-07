@@ -227,8 +227,8 @@ if [ -d "$CGR_HOME/workspaces" ]; then
             P="${p#*\"}"; P="${P%\"*}"
             [ -n "$P" ] || continue
             TOTAL=$((TOTAL+1))
-            # The workspace file stores native paths (D:\\money\\x); this shell
-            # may be git-bash (/d/money/x) or WSL (/mnt/d/money/x).
+            # The workspace file stores native paths (D:\\work\\myrepo); this shell
+            # may be git-bash (/d/work/myrepo) or WSL (/mnt/d/work/myrepo).
             PB="$(cgr_posix_path "$P")"
             [ -d "$PB" ] || [ -d "$P" ] || MISSING=$((MISSING+1))
             ;;
@@ -258,7 +258,31 @@ PY
   if [ -n "${CN//[$'\r\n ']/}" ]; then pass "graph.sqlite holds $CN nodes"; fi
 fi
 
-hdr "client wiring"
+hdr "kit portability"
+
+# A kit that only works on the machine it was written on is not a kit. Catch the
+# usual regressions: a hardcoded user name or an absolute home path in a script.
+KIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ME="$(basename "$HOME_U")"
+if [ -d "$KIT_DIR/scripts" ] && [ -n "$ME" ]; then
+  HITS="$(grep -rIn --include='*.sh' --include='*.py' -F "$ME" "$KIT_DIR/scripts" 2>/dev/null | grep -v '^\s*#' | head -3)"
+  if [ -n "$HITS" ]; then
+    warn "scripts/ hardcodes the current user name '$ME' — it will break on another machine" \
+         "resolve paths from \$HOME / \$USERPROFILE (see scripts/_common.sh)"
+  else
+    pass "no hardcoded user name in scripts/"
+  fi
+  ABSHITS="$(grep -rIn --include='*.sh' --include='*.py' -E '(/c/Users/[A-Za-z0-9._-]+|/mnt/c/Users/[A-Za-z0-9._-]+|[Cc]:\\+Users\\+[A-Za-z0-9._-]+)' "$KIT_DIR/scripts" 2>/dev/null \
+            | grep -vE ':[0-9]+:[[:space:]]*#' \
+            | grep -v 'cgr_home\|USERPROFILE\|/c/Users/\*\|/c/Users/you' | head -3)"
+  if [ -n "$ABSHITS" ]; then
+    warn "scripts/ contains an absolute home path — hardcoded to one machine" \
+         "use \$HOME / \$USERPROFILE and cgr_native_path / cgr_posix_path"
+  else
+    pass "no absolute home path in scripts/"
+  fi
+fi
+
 
 if command -v hermes >/dev/null 2>&1; then
   pass "hermes CLI present"

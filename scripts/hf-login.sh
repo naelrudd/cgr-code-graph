@@ -57,13 +57,15 @@ Steps
   4. Click "Create token" and copy the string starting with hf_
      (it is shown once - if you lose it, delete it and make another)
 
-Where it is stored on THIS machine:
-  $TOK_PATH
+Where it is stored
+  portable   : ~/.cache/huggingface/token
+  on this PC : $TOK_PATH
 
-  That path is specific to this user account and this python install. On another
-  machine it will be different - the script always prints the real one, and
-  "bash scripts/hf-login.sh --where" shows how it was resolved. See
-  docs/huggingface-token.md for the per-OS defaults and how to override them.
+  Nothing here is written into the repo - that absolute path is computed at run
+  time from your profile, so the same script prints a different one on every
+  machine and user account. It also moves if you set HF_TOKEN_PATH, HF_HOME or
+  XDG_CACHE_HOME; "bash scripts/hf-login.sh --where" shows how it was resolved.
+  Per-OS defaults: docs/huggingface-token.md.
 
 Paste the token below and press Enter.
   >> NOTHING will appear as you paste - no dots, no asterisks, no echo. <<
