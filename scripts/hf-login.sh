@@ -40,26 +40,51 @@ case "${1:-login}" in
   --logout|logout) "$PY" "$HF_PY" logout ;;
 
   login|"")
-    # The token is read by THIS shell, not by Python. Under WSL the Windows
-    # python.exe inherits neither the environment nor reliably the stdin of the
-    # bash that launched it, so handing the secret over inside the script is the
-    # only path that works on every bash-on-Windows. It travels through a
-    # 0600 temp file in the Windows profile (WSL's /tmp is invisible to
-    # python.exe) and is removed immediately after.
-    echo "Create a READ token at https://huggingface.co/settings/tokens -> New token -> Read."
+    TOK_PATH="$("$PY" "$HF_PY" path | tr -d '\r')"
+    cat <<EOF
+Hugging Face token setup
+========================
+
+Why: the local embedding model is downloaded from huggingface.co. Without a
+token the download is anonymous - it still works, just slower and rate-limited
+(that is the "unauthenticated requests" warning). A token changes nothing about
+privacy: the request carries a model id, never your code.
+
+Steps
+  1. Open https://huggingface.co/settings/tokens
+  2. Click "New token", name it anything (e.g. cgr-local)
+  3. Choose role "Read" - Read is enough; Write would be pointless here
+  4. Click "Create token" and copy the string starting with hf_
+     (it is shown once - if you lose it, delete it and make another)
+
+Where it is stored on THIS machine:
+  $TOK_PATH
+
+  That path is specific to this user account and this python install. On another
+  machine it will be different - the script always prints the real one, and
+  "bash scripts/hf-login.sh --where" shows how it was resolved. See
+  docs/huggingface-token.md for the per-OS defaults and how to override them.
+
+Paste the token below and press Enter.
+  >> NOTHING will appear as you paste - no dots, no asterisks, no echo. <<
+  That is deliberate: the terminal hides input so the token never lands in your
+  screen, your scrollback, or a screen recording. Paste and press Enter blind.
+  (In Windows Terminal / PowerShell, right-click pastes.)
+
+EOF
     printf 'token: '
     stty -echo 2>/dev/null || true
     IFS= read -r TOK
     stty echo 2>/dev/null || true
     printf '\n'
-    if [ -z "${TOK:-}" ]; then echo "aborted: empty token" >&2; exit 1; fi
+    if [ -z "${TOK:-}" ]; then echo "aborted: nothing was pasted (empty input)" >&2; exit 1; fi
 
     TMPD="$(cgr_temp_dir)"
     TF="$TMPD/cgr-hf-token-$$"
     ( umask 077; printf '%s' "$TOK" > "$TF" ) || { echo "error: cannot write $TF" >&2; exit 1; }
     TOK=""
 
-    "$PY" "$HF_PY" login --token-file "$(cgr_native_path "$TF")"
+    "$PY" "$HF_PY" login --quiet --token-file "$(cgr_native_path "$TF")"
     RC=$?
     rm -f "$TF"
     exit $RC

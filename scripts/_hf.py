@@ -42,9 +42,16 @@ def read_token() -> str:
         return ""
 
 
+def cmd_path() -> int:
+    print(HF_TOKEN_PATH)
+    return 0
+
+
 def cmd_login() -> int:
-    print(f"token file: {HF_TOKEN_PATH}", flush=True)
-    print("Create a READ token at https://huggingface.co/settings/tokens -> New token -> Read.", flush=True)
+    quiet = "--quiet" in sys.argv
+    if not quiet:
+        print(f"token file: {HF_TOKEN_PATH}", flush=True)
+        print("Create a READ token at https://huggingface.co/settings/tokens -> New token -> Read.", flush=True)
     tok = read_token()
     if not tok:
         print("aborted: empty token", file=sys.stderr)
@@ -108,7 +115,8 @@ def cmd_logout() -> int:
 
 def main() -> int:
     cmd = sys.argv[1] if len(sys.argv) > 1 else "login"
-    return {"login": cmd_login, "status": cmd_status, "logout": cmd_logout}.get(cmd, lambda: 2)()
+    return {"login": cmd_login, "status": cmd_status, "logout": cmd_logout,
+            "path": cmd_path}.get(cmd, lambda: 2)()
 
 
 if __name__ == "__main__":
