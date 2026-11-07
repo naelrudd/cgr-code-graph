@@ -96,13 +96,9 @@ fi
 TOOL_PY="$(cgr_tool_python || true)"
 if [ -n "$TOOL_PY" ]; then
   pass "tool venv python: $TOOL_PY"
-  TOOL_ROOT="$(dirname "$(dirname "$TOOL_PY")")"
-  TOOL_DIR="$TOOL_ROOT/$TOOL_NAME"
 else
-  TOOL_ROOT="$(cgr_tool_roots | head -1)"
-  TOOL_DIR="$TOOL_ROOT/$TOOL_NAME"
   fail "tool venv not found (searched $(cgr_tool_roots | tr '\n' ' '))" \
-       "uv tool install \"$TOOL_NAME[treesitter-full,sqlite-vec,ast-grep]\""
+       "uv tool install \"${TOOL_NAME}[treesitter-full,sqlite-vec,ast-grep]\""
 fi
 
 py_has() { [ -x "$TOOL_PY" ] && "$TOOL_PY" -c "import $1" >/dev/null 2>&1; }
