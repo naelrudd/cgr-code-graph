@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shell:
+    name: shell (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck
+        if: runner.os == 'Linux'
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: .
+          severity: warning
+
+      - name: bash syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in scripts/*.sh tests/*.sh; do
+            bash -n "$f" && echo "ok  $f"
+          done
+
+      - name: unit tests
+        shell: bash
+        run: bash tests/smoke.sh
+
+  powershell:
+    name: powershell
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install.ps1 parses
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'scripts/install.ps1'), [ref]$null, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Host "::error file=scripts/install.ps1::$($_.Message)" }
+            exit 1
+          }
+          Write-Host 'ok  scripts/install.ps1'
+
+      - name: PSScriptAnalyzer (errors only)
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -ErrorAction Stop
+          $findings = @(Invoke-ScriptAnalyzer -Path scripts/install.ps1 -Severity Error)
+          $findings | Format-Table -AutoSize | Out-String | Write-Host
+          if ($findings.Count -gt 0) { exit 1 }
+          Write-Host 'ok  no analyzer errors'
+
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: relative links resolve
+        shell: bash
+        run: |
+          missing=0
+          while IFS= read -r f; do
+            dir="$(dirname "$f")"
+            while IFS= read -r link; do
+              [ -n "$link" ] || continue
+              case "$link" in http*|mailto:*|'#'*) continue ;; esac
+              target="${link%%#*}"
+              [ -e "$dir/$target" ] || { echo "::error file=$f::broken link -> $link"; missing=1; }
+            done < <(grep -oE '\]\([^)]+\)' "$f" | sed 's/^](//; s/)$//')
+          done < <(git ls-files '*.md')
+          [ "$missing" -eq 0 ] && echo "ok  all relative markdown links resolve"
+          exit "$missing"
+
+      - name: no author paths in tracked files
+        shell: bash
+        run: |
+          # Comments are excluded: this rule documents itself in its own examples.
+          hits="$(git grep -InE '(/c/Users/[A-Za-z0-9._-]+|/mnt/c/Users/[A-Za-z0-9._-]+|[Cc]:\\\\+Users\\\\+[A-Za-z0-9._-]+)' \
+                    -- 'scripts/*' 'tests/*' 'docs/*' 'examples/*' \
+                  | grep -vE ':[0-9]+:[[:space:]]*#' \
+                  | grep -vE '/c/Users/you|/c/Users/\$|/mnt/c/Users/\$|Users.you' || true)"
+          if [ -n "$hits" ]; then
+            printf '%s\n' "$hits"
+            echo "::error::a hardcoded home path leaked into the repo"
+            exit 1
+          fi
+          echo "ok  no hardcoded home paths"
