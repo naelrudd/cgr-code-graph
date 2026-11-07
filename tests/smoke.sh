@@ -117,6 +117,20 @@ else
   printf '  skip python checks (no python3 on PATH)\n'
 fi
 
+echo "== install PATH comparison"
+
+# install.sh compares cgr_shim_dir against $PATH. On MSYS the shim dir comes back
+# native (C:\Users\...) while $PATH holds /c/Users/..., so the raw comparison told
+# every Windows user to add a directory that was already on PATH. Guard the
+# conversion, not the machine-specific value.
+SHIM="$(cgr_shim_dir)"
+SHIM_POSIX="$(cgr_posix_path "$SHIM")"
+case "$SHIM_POSIX" in
+  *\*) bad "shim dir converts to shell form for the PATH check" "still native: $SHIM_POSIX" ;;
+  *)    ok  "shim dir converts to shell form for the PATH check" ;;
+esac
+is "shim dir conversion is stable" "$(cgr_posix_path "$SHIM_POSIX")" "$SHIM_POSIX"
+
 echo "== portability rules"
 
 # The author's own machine must not be in the scripts. Comments are excluded:

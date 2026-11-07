@@ -54,11 +54,15 @@ if ! "$TOOL_PY" -c 'import torch, transformers' 2>/dev/null; then
 fi
 
 BIN_DIR="$(cgr_shim_dir)"
+# $PATH is in shell form (/c/Users/...) but cgr_shim_dir returns a native path
+# (C:\Users\...), so the old comparison never matched on MSYS and the script told
+# every Windows user to add a directory that was already on PATH. Compare posix.
+BIN_DIR_POSIX="$(cgr_posix_path "$BIN_DIR")"
 echo
 echo "==> done"
 echo "    binary: ${BIN_DIR}/cgr (Windows: ${BIN_DIR}/cgr.exe)"
 case ":$PATH:" in
-  *":${BIN_DIR}:"*) ;;
+  *":${BIN_DIR_POSIX}:"*) ;;
   *) echo "    NOTE: ${BIN_DIR} is not on PATH. Add it, or call cgr by absolute path." ;;
 esac
 echo "    verify: cgr --version && cgr doctor"
