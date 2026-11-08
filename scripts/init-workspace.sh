@@ -18,13 +18,20 @@
 #
 # With no project args, every direct child of <root> that looks like code is added
 # (has .git, package.json, pyproject.toml, requirements.txt, Cargo.toml, go.mod, or convex/).
+#
+# Re-running this for an existing workspace is refused unless --force is given:
+# `workspace create --force` would replace the definition, but the projects the old
+# layout indexed stay in the graph, so every file would then answer twice under two
+# namespaces. --force says "replace the layout and accept that".
 set -euo pipefail
 
 MODE=projects
+FORCE=0
 args=()
 for a in "$@"; do
   case "$a" in
     --root) MODE=root ;;
+    --force) FORCE=1 ;;
     # Print the comment header only: stop at the first non-comment line so the
     # usage text can never leak `set -euo pipefail` the way a fixed line range did.
     -h|--help) awk 'NR > 1 { if ($0 !~ /^#/) exit; sub(/^# ?/, ""); print }' "$0"; exit 0 ;;
@@ -33,13 +40,29 @@ for a in "$@"; do
 done
 set -- ${args[@]+"${args[@]}"}
 
-WS="${1:?usage: init-workspace.sh <workspace> <root> [--root] [project ...]}"
-ROOT="${2:?usage: init-workspace.sh <workspace> <root> [--root] [project ...]}"
+WS="${1:?usage: init-workspace.sh <workspace> <root> [--root] [--force] [project ...]}"
+ROOT="${2:?usage: init-workspace.sh <workspace> <root> [--root] [--force] [project ...]}"
 shift 2
 
 CGR="${CGR_BIN:-cgr}"
 command -v "$CGR" >/dev/null 2>&1 || { echo "error: cgr not found. Run scripts/install.sh first" >&2; exit 1; }
 [ -d "$ROOT" ] || { echo "error: root '$ROOT' is not a directory" >&2; exit 1; }
+
+# Refuse to silently re-lay an existing workspace. This runs before anything is
+# written, and names what is already registered so the choice is informed.
+if existing="$("$CGR" workspace show "$WS" 2>/dev/null)" && [ -n "${existing//[$'\r\n ']/}" ]; then
+  if [ "$FORCE" -ne 1 ]; then
+    echo "error: workspace '$WS' already exists:" >&2
+    printf '%s\n' "$existing" | sed 's/^/    /' >&2
+    echo >&2
+    echo "  Re-laying it would index the same files a second time under new project" >&2
+    echo "  names — the old rows stay in the graph and every query answers twice." >&2
+    echo "  Pass --force to replace the layout anyway, or use another workspace name," >&2
+    echo "  or 'cgr workspace remove-repo $WS <path>' to drop one repo." >&2
+    exit 1
+  fi
+  echo "==> replacing the existing workspace '$WS' (--force)"
+fi
 
 # cgr is a native binary and cannot resolve MSYS/POSIX paths (/d/work, /tmp/x),
 # so paths must be converted or every add-repo silently fails.
@@ -80,7 +103,10 @@ echo "==> workspace '$WS' over $ROOT — $WHAT"
 if [ "$MODE" = root ]; then
   # One repo entry for the whole root: the root becomes the project namespace, which
   # is what lets a sibling import resolve instead of degrading to an external stub.
-  if err="$("$CGR" workspace add-repo "$WS" "$ROOT_NATIVE" -p "$WS" 2>&1 >/dev/null)"; then
+  # No -p here: let cgr derive `<dirname>__<hash>` exactly as it does for a child
+  # repo, so the graph project name, the workspace file and the hash-cache directory
+  # (~/.cgr/state/<dirname>__<hash>/) all agree. A custom name would desync them.
+  if err="$("$CGR" workspace add-repo "$WS" "$ROOT_NATIVE" 2>&1 >/dev/null)"; then
     echo "    + $WS <- $ROOT (single root)"
   else
     echo "    ! add-repo failed for $ROOT — $(printf '%s' "$err" | tail -1)" >&2

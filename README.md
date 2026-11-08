@@ -122,6 +122,19 @@ wipes everything, and there is no per-repo refresh or per-repo file counts.
 Merge only where the repos genuinely import each other by path. Two projects that
 each depend on `lodash` gain nothing from sharing a root.
 
+The root is registered under the name cgr derives from the folder
+(`nael-algorithms__aa1801f9`), the same way a child repo would be, so the workspace
+file, the graph project and the hash cache under `~/.cgr/state/` all agree.
+
+Changing an existing workspace's layout is refused, because
+`workspace create --force` replaces the definition while the projects the old
+layout indexed stay in the graph — every file would then answer twice under two
+namespaces. Pass `--force` once you accept that, or use a second workspace name:
+
+```bash
+bash scripts/init-workspace.sh work D:/work --root --force
+```
+
 ## Measured, not promised
 
 Reference corpus: 21 projects, 9,386 files, 89 MB, ~22M tokens, on one Windows 11

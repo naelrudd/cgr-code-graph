@@ -22,6 +22,13 @@ release it installs.
   the call edge is absent (18 edges as one root, 14 as two).
   `tests/smoke.sh` drives the script against a stub `cgr` and asserts the argv it
   builds, so the mode is covered without running a real index.
+- `init-workspace.sh` now refuses to re-lay an existing workspace unless `--force`
+  is passed, and names the repos already registered instead of overwriting them
+  silently. `cgr workspace create --force` only replaces the definition: the
+  projects the previous layout indexed stay in the graph, so the same files would
+  answer twice under two namespaces. `--root` also lets cgr derive the project
+  name from the folder now (no `-p`), so the workspace file, the graph project and
+  `~/.cgr/state/<project>/` agree — a custom name desynced them.
 
 ### Fixed
 

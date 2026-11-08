@@ -21,6 +21,8 @@ is()   { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1" "expected '$3', got '$2
 yes()  { if [ "$2" = "0" ]; then ok "$1"; else bad "$1" "${3:-expected success}"; fi; }
 no()   { if [ "$2" != "0" ]; then ok "$1"; else bad "$1" "${3:-expected failure}"; fi; }
 has()  { case "$2" in *"$3"*) ok "$1" ;; *) bad "$1" "output does not contain '$3'" ;; esac; }
+# `grep -c` prints 0 AND exits 1 on no match, so `|| printf 0` would emit "0\n0".
+count() { grep -c "$1" "$2" 2>/dev/null || true; }
 
 echo "== path conversion"
 
@@ -143,26 +145,54 @@ rm -rf "$WSROOT"; mkdir -p "$WSROOT/corpus/proj_a/.git" "$WSROOT/corpus/proj_b" 
 cat > "$WSROOT/bin/cgr" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$CGR_CALLS"
+# `workspace show` is the existence probe: exit non-zero and print nothing when
+# CGR_SHOW names no file, so a fresh workspace looks fresh.
+if [ "${1:-}" = workspace ] && [ "${2:-}" = show ]; then
+  [ -n "${CGR_SHOW:-}" ] && [ -f "$CGR_SHOW" ] || exit 1
+  cat "$CGR_SHOW"
+fi
+exit 0
 STUB
 chmod +x "$WSROOT/bin/cgr"
 export CGR_CALLS="$WSROOT/calls.log"
 
 CGR_BIN="$WSROOT/bin/cgr" bash "$KIT/scripts/init-workspace.sh" wsproj "$WSROOT/corpus" >/dev/null 2>&1
-ADDS="$(grep -c 'workspace add-repo' "$WSROOT/calls.log" 2>/dev/null || printf 0)"
+ADDS="$(count 'workspace add-repo' "$WSROOT/calls.log")"
 is "default mode adds one repo per project" "$ADDS" "2"
 
 : > "$WSROOT/calls.log"
 CGR_BIN="$WSROOT/bin/cgr" bash "$KIT/scripts/init-workspace.sh" wsroot "$WSROOT/corpus" --root >/dev/null 2>&1
-ADDS="$(grep -c 'workspace add-repo' "$WSROOT/calls.log" 2>/dev/null || printf 0)"
+ADDS="$(count 'workspace add-repo' "$WSROOT/calls.log")"
 is "--root adds exactly one repo" "$ADDS" "1"
 has "--root registers the root itself, not a child" "$(grep 'workspace add-repo' "$WSROOT/calls.log" || true)" "corpus"
 case "$(grep 'workspace add-repo' "$WSROOT/calls.log" || true)" in
   *proj_a*|*proj_b*) bad "--root does not fall back to per-project entries" "got a child path" ;;
   *)                 ok  "--root does not fall back to per-project entries" ;;
 esac
+# A custom -p would desync the graph project name from the hash-cache directory,
+# which cgr always derives from the path.
+case "$(grep 'workspace add-repo' "$WSROOT/calls.log" || true)" in
+  *' -p '*) bad "--root lets cgr derive the project name" "passed -p" ;;
+  *)        ok  "--root lets cgr derive the project name" ;;
+esac
 
 OUT="$(CGR_BIN="$WSROOT/bin/cgr" bash "$KIT/scripts/init-workspace.sh" wsbad "$WSROOT/corpus" --root proj_a 2>&1)"
 no "--root with an explicit project list is rejected" "$?" "$OUT"
+
+# Re-laying an existing workspace would index every file twice under two namespaces
+# (the old project rows stay in the graph), so it must be refused, not overwritten.
+printf '%s\n' 'proj_a' 'proj_b' > "$WSROOT/existing.txt"
+: > "$WSROOT/calls.log"
+OUT="$(CGR_SHOW="$WSROOT/existing.txt" CGR_BIN="$WSROOT/bin/cgr" \
+       bash "$KIT/scripts/init-workspace.sh" wsroot "$WSROOT/corpus" --root 2>&1)"
+no "an existing workspace is refused without --force" "$?" "$OUT"
+is "the refusal writes nothing" "$(count 'workspace add-repo' "$WSROOT/calls.log")" "0"
+has "the refusal names the existing repos" "$OUT" "proj_b"
+
+: > "$WSROOT/calls.log"
+CGR_SHOW="$WSROOT/existing.txt" CGR_BIN="$WSROOT/bin/cgr" \
+  bash "$KIT/scripts/init-workspace.sh" wsroot "$WSROOT/corpus" --root --force >/dev/null 2>&1
+is "--force replaces the layout" "$(count 'workspace add-repo' "$WSROOT/calls.log")" "1"
 
 rm -rf "$WSROOT"
 
@@ -187,7 +217,7 @@ export CGR_CALLS="$IDXROOT/calls.log"
 
 CGR_HOME="$IDXROOT/home" CGR_BIN="$IDXROOT/bin/cgr" bash "$KIT/scripts/index.sh" wsidx >/dev/null 2>&1
 yes "index.sh exits 0 on a stubbed sync" "$?"
-is "one cgr start per repo" "$(grep -c '^start ' "$IDXROOT/calls.log" 2>/dev/null || printf 0)" "2"
+is "one cgr start per repo" "$(count '^start ' "$IDXROOT/calls.log")" "2"
 CALLS="$(cat "$IDXROOT/calls.log")"
 case "$CALLS" in
   *--workspace*) bad "no workspace-mode sync (it starts the assistant)" ;;

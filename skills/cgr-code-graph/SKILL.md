@@ -214,6 +214,13 @@ The short version:
   pays when the repos genuinely reference each other by an importable path; two projects
   that each depend on `lucide-react` gain nothing. `prune`/project-level state is also
   lost per repo — no per-repo listing of file counts.
+  Recipe: `init-workspace.sh <ws> <root> --root`. It registers the root under the
+  name cgr derives from the folder (`<dirname>__<hash>`), so the workspace toml, the
+  graph project and `~/.cgr/state/<project>/` all agree — do not pass `-p`.
+  Re-laying an existing workspace is refused without `--force`: `workspace create
+  --force` swaps the definition but leaves the old project's rows in the graph, so
+  every file then answers twice. Switching one workspace between the two layouts is
+  therefore a delete-your-own-data move, not a refresh.
 - Answer a "where is X" question with three hops: `semantic_search` (purpose, in the project
   that owns the feature) → `get_code_snippet` (confirm the body) → `callers` (who reaches it).
   Then search the action verb *again* to catch parallel entry points that never call the
