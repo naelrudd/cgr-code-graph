@@ -280,6 +280,30 @@ PY
   if [ -n "${CN//[$'\r\n ']/}" ]; then pass "graph.sqlite holds $CN nodes"; fi
 fi
 
+hdr "docs retrieval (markdown sections)"
+
+# cgr indexes markdown headings as Section nodes but never embeds them, so a
+# docs-only corpus answers "No semantic matches" no matter how often it is
+# synced. scripts/patch-sections.py lifts that; uv tool upgrade restores stock,
+# so this check is the tripwire after every upgrade.
+PATCHER="$(cd "$SCRIPT_DIR/.." && pwd)/scripts/patch-sections.py"
+if [ -f "$PATCHER" ]; then
+  PY_BIN=""
+  for PY_BIN in "$(uv tool dir 2>/dev/null)/$TOOL_NAME/Scripts/python.exe" \
+                "$(uv tool dir 2>/dev/null)/$TOOL_NAME/bin/python"; do
+    [ -x "$PY_BIN" ] && break
+    PY_BIN=""
+  done
+  if [ -n "$PY_BIN" ]; then
+    if "$PY_BIN" "$(native_path "$PATCHER")" --check >/dev/null 2>&1; then
+      pass "markdown sections are embedded (patch-sections.py applied)"
+    else
+      warn "sections are not embedded — markdown memories/docs are unsearchable" \
+           "python scripts/patch-sections.py   (lost on every uv tool upgrade)"
+    fi
+  fi
+fi
+
 hdr "kit portability"
 
 # A kit that only works on the machine it was written on is not a kit. Catch the

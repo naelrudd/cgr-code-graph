@@ -218,6 +218,14 @@ Full measurements, including the throughput math for sizing your own corpus:
 
 ## Three usage layers
 
+0. **Query before read (the token half).** A question about a corpus is answered
+   from the graph, not by opening files: `cgrq find "<question>" -p <project>`
+   returns ranked spans with the head of each body (~700 B for two hits, warm
+   1.2 s) where reading the files costs 14 KB+ each. `cgrq ctx` then returns one
+   span inside a token budget. `cgrq stale` says whether the graph still
+   describes the checkout — a hit from a stale graph is worse than no hit,
+   because it reads as current. See
+   [Warm client](#warm-client-when-the-client-cannot-register-mcp).
 1. **Automatic (recommended).** Register `cgr mcp-server --read-only` with your
    agent, and the tools appear next to the built-in ones. Add `--with-writer` if
    the agent should be able to leave notes (`annotate`) — see
@@ -227,6 +235,41 @@ Full measurements, including the throughput math for sizing your own corpus:
    `AGENTS.md`. This is what makes a *non*-`cgr`-aware agent reach for graph tools
    first.
 3. **Manual.** `bash scripts/ask.sh work "where is the search index built?"`
+
+### Warm client: when the client cannot register MCP
+
+Some hosts expose no MCP client at all (an ACP/JSON-RPC harness, a chat UI with no
+`/reload-mcp`), so the tools never appear even though `hermes mcp test cgr` passes.
+`scripts/cgrq.py` holds one `cgr mcp-server` child alive and proxies it over
+loopback, which also removes the embedding-model reload from every query: first
+`semantic_search` 32 s, **every one after 0.3–1.9 s**.
+
+```
+python scripts/cgrq.py serve --workspace work    # or let any command autostart it
+python scripts/cgrq.py find "where are bookings created" -p svc__1a2b3c4d
+python scripts/cgrq.py stale                     # exit 1 when a repo moved since its sync
+python scripts/cgrq.py stop
+```
+
+It serves both corpora: code (`Function`/`Method`) and markdown
+(`Section`), the latter after `python scripts/patch-sections.py` — see
+[Markdown corpora](#markdown-corpora-sections-are-searchable-after-one-patch).
+
+### Markdown corpora: sections are searchable, after one patch
+
+cgr indexes every markdown heading as a `Section` carrying `path`/`start_line`/
+`end_line`, then never embeds it: `EMBEDDED_NODE_LABELS` and
+`CYPHER_QUERY_EMBEDDINGS` are `Function` + `Method` only, and `definition` /
+`context` refuse a `Section` label. A docs-only corpus therefore answers
+"No semantic matches" however often it is synced. `scripts/patch-sections.py`
+makes five edits to the installed package; `doctor.sh` re-checks afterwards
+because `uv tool upgrade` restores stock silently.
+
+```
+python scripts/patch-sections.py --backup   # apply (idempotent)
+python scripts/patch-sections.py --check    # exit 1 when stock again
+bash scripts/index.sh work                  # re-sync to embed the sections
+```
 
 ## Requirements
 

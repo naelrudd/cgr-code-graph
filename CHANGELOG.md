@@ -11,6 +11,25 @@ release it installs.
 
 ### Added
 
+- `scripts/patch-sections.py` makes a markdown corpus searchable. cgr indexes
+  every heading as a `Section` with `path`/`start_line`/`end_line` and then never
+  embeds it — `EMBEDDED_NODE_LABELS` and `CYPHER_QUERY_EMBEDDINGS` are `Function`
+  + `Method` only — so a docs-only project answers "No semantic matches" however
+  often it is synced. Five edits to the installed package fix it, idempotent,
+  with `--check` / `--revert` / `--backup`; `doctor.sh` runs the check because
+  `uv tool upgrade` silently restores stock. Verified: 97 of 97 sections embedded
+  and readable through `find` afterwards. The section branch scopes on the
+  section's own qualified name — walking `CONTAINS_SECTION` from the file's
+  `Module` returned one row per file (14 of 97).
+- `scripts/cgrq.py` now ships with the kit (it only lived in `~/.local/bin`)
+  with two subcommands:
+  - `find "<query>" -p <project> [-k 3] [-l 3]` — semantic search plus the head
+    of each hit's body in one round trip. `semantic_search` alone returns five
+    qualified names and no source, so ruling a hit in or out cost one call each;
+    two hits with four lines measured ~700 B / 1.2 s warm.
+  - `stale` — compares each repo's last commit against its hash-cache mtime and
+    exits 1 when any project is behind, which is the only way an agent can tell
+    whether a hit comes from a graph that still describes the code.
 - `scripts/register-mcp.sh ... --with-writer` registers a second MCP server,
   `cgr-write`, with `--read-only` (and `MCP_READ_ONLY`) removed. `--read-only`
   advertises 26 of 37 tools, and the eleven it hides include `annotate` — the only

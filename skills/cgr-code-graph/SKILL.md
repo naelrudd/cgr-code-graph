@@ -290,6 +290,67 @@ the same split is `~/.cgr/state/<project>/` (finished a sync) versus the repo li
 `~/.cgr/workspaces/<name>.toml` (merely declared). A repo present in the toml but absent from
 `state/` answers `Unknown project` — say which projects an answer covered, never promise the rest.
 
+### Third route: `cgrq`, when the client cannot register MCP at all
+
+Some hosts serve no MCP client (an ACP/JSON-RPC harness, a chat UI with no `/reload-mcp`), so the
+`mcp__cgr__*` tools never appear even though `hermes mcp test cgr` passes and a manual spawn lists
+all 26 tools. Do not answer "reload the client" twice — hand over a warm client instead:
+`scripts/cgrq.py` (+ a `cgrq` bash shim in `~/.local/bin` that prefers the kit copy and falls back
+to a local one) keeps one `cgr mcp-server --workspace <ws>` child alive
+and proxies `tools/call` over loopback TCP `127.0.0.1:20140`.
+
+```
+cgrq status                          # pid, workspace, answering?
+cgrq tools                           # 26 names, autostarts the daemon
+cgrq find "where are bookings created" -p <project>__<hash>   # hits + head of each body
+cgrq search "where are bookings created" -p <project>__<hash>  # names + scores only
+cgrq ctx "booking status transition" -p <project>__<hash> --budget 900
+cgrq tool callers '{"qualified_name":"...","project":"..."}'
+cgrq stale                           # which repos moved since their last sync
+cgrq serve --workspace money         # explicit start; --with-writer to enable annotate
+cgrq stop
+```
+
+`find` exists because `semantic_search` alone returns five qualified names and no source, so ruling a
+hit in or out costs one more call each. `find` prints `path:span score` plus the first `-l` lines of
+every hit in a single round trip: two hits with 4 lines each measured ~700 bytes / 1.2 s warm, where
+the same judgement by file reads is 14 KB+. `stale` answers the question a stale graph makes
+unanswerable — "is this hit still true?" — by comparing each repo's last commit with its hash cache;
+it exits 1 when anything is behind, so a shell can gate on it.
+
+Measured on a 21-project graph: cold daemon start 8 s (`tools` total), first
+`semantic_search` 32 s (embedding model load), every call after that **0.3–1.9 s** —
+`ctx` returned 166 tokens of `convex/bookings.ts:66-86` plus the callee's signature in 1.9 s, where
+opening the file costs 14 KB. Deterministic CLI graph queries are already ~1.8 s cold, so the daemon
+only buys the embedding-model load. Model load happens per server process, so the same daemon must
+stay up across turns; it is cwd-independent and survives the shell that started it.
+
+### Markdown corpora: sections are searchable, after one patch
+
+Stock cgr indexes every markdown heading as a `Section` with `path` / `start_line` / `end_line`, then
+never embeds it: `EMBEDDED_NODE_LABELS` and `CYPHER_QUERY_EMBEDDINGS` are `Function` + `Method` only,
+and `definition` / `get_code_snippet` / `context` refuse a `Section` label. A docs-only corpus
+therefore answers `No semantic matches` however often it is synced. `scripts/patch-sections.py` edits
+the installed package in five places (three label sets, the embedding query, `_DEFINITION_LABELS` in
+`graph_query.py` and `context_slice.py`), is idempotent, and has `--check` / `--revert`:
+
+```
+python scripts/patch-sections.py --backup   # *.cgr-stock next to each edited file
+python scripts/patch-sections.py            # apply / re-apply after uv tool upgrade
+python scripts/patch-sections.py --check    # exit 1 when stock again; doctor.sh runs this
+bash scripts/index.sh money                 # re-sync: sections are embedded on the next pass
+```
+
+The section branch scopes on `n.qualified_name STARTS WITH $project_name` rather than walking
+`(m:Module)-[:CONTAINS_SECTION]->(n:Section)`: the embedded engine returned 14 rows for 97 sections
+through that edge (one per file), and returns all 97 when scoped on the section itself. A `Section`
+has its own `path`, so it needs its own RETURN block instead of the shared `m.path` one. Verified on a
+97-section docs project: 97 points stored, `find` returns `MARKETING-ARCHIVE-2026-11-03.md:67-73`
+with its body. Anything under `uv tool upgrade` is lost — the doctor check is the tripwire.
+
+The patch is a local build, not an upstream fix: a package upgrade restores stock silently, so treat
+"no semantic matches" on a docs project as this first, not as an indexing failure.
+
 ## What surface to build around it
 
 When asked "should this be a GUI / a VS Code extension / an MCP?", the answer is MCP plus two shell

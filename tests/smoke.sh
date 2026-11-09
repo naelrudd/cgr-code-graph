@@ -361,6 +361,39 @@ if [ -d "$KIT/.git" ] && command -v git >/dev/null 2>&1; then
                     || bad "tracked shell scripts are LF" "got: $SH_CRLF"
 fi
 
+echo "== warm client and section patch"
+
+# Both are pure Python, so they must compile and answer without a graph present:
+# a smoke test that needs a 25-project index is a test nobody runs.
+if command -v python >/dev/null 2>&1; then
+  # A Windows python cannot open an MSYS path: /d/x becomes C:/Program Files/Git/d/x.
+  nat() { if command -v cygpath >/dev/null 2>&1; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
+  if python -m py_compile "$(nat "$KIT/scripts/cgrq.py")" "$(nat "$KIT/scripts/patch-sections.py")" 2>/dev/null; then
+    ok "cgrq.py and patch-sections.py compile"
+  else
+    bad "cgrq.py and patch-sections.py compile" "py_compile failed"
+  fi
+  # 0 = patched, 1 = stock, 2 = package missing. Anything above 1 is a crash.
+  python "$(nat "$KIT/scripts/patch-sections.py")" --check >/dev/null 2>&1
+  CHECK_CODE=$?
+  if [ "$CHECK_CODE" -le 1 ]; then
+    ok "patch-sections.py --check answers without a graph"
+  else
+    bad "patch-sections.py --check answers without a graph" "exit $CHECK_CODE"
+  fi
+  for CMD in 'if a.command == "find":' 'cmd_stale()' 'if a.command in ("stale", "fresh"):'; do
+    grep -qF "$CMD" "$KIT/scripts/cgrq.py" \
+      && ok "cgrq wires: $CMD" || bad "cgrq wires: $CMD" "missing from cgrq.py"
+  done
+  # `project_named = false` follows `project_name` in the workspace toml; a naive
+  # startswith() read it as the name and reported every repo as "false".
+  grep -qF '.split("=", 1)[0].strip() == "project_name"' "$KIT/scripts/cgrq.py" \
+    && ok "cgrq reads project_name exactly, not project_named" \
+    || bad "cgrq reads project_name exactly, not project_named" "prefix match regressed"
+else
+  bad "python present for the warm client and section patch" "python not on PATH"
+fi
+
 echo
 printf '  %d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
