@@ -135,6 +135,42 @@ namespaces. Pass `--force` once you accept that, or use a second workspace name:
 bash scripts/init-workspace.sh work D:/work --root --force
 ```
 
+## Did everything actually land?
+
+A sync that dies, or a repo written in a language cgr has no grammar for, still
+leaves a hash cache under `~/.cgr/state/<project>/`. That folder proves a sync was
+*attempted*. To see what the graph really holds, read the graph:
+
+```bash
+python3 scripts/audit-workspace.py work
+CGR_HOME=D:/other-graph python3 scripts/audit-workspace.py work   # a different graph home
+```
+
+```
+project                       nodes   defs  files   edges
+ngapal__1c96cb4c                295    245     23     966
+skripsi__fc42227f             10765   3923   5548   15969
+
+A LANGUAGE cgr HAS NO PARSER FOR (indexed as files only, no code graph):
+  peeler__6b6a6249             19 files (.astro): nothing to query here
+
+declared: 21  with nodes: 21  missing: 0
+```
+
+Exit status is 1 only when a declared repo has **no nodes at all** — the one
+verdict that means the sync produced nothing. The other verdicts are information:
+
+| verdict | meaning | what to do |
+| --- | --- | --- |
+| no nodes at all | the sync never ran, or wrote nothing | run `index.sh` again for that repo |
+| code but no definitions | files landed, contents did not | re-run its sync; a stopped run does this |
+| a language cgr has no parser for | `.astro`, `.vue`, `.svelte`, … land as files only | nothing — such repos are not queryable by code |
+| nothing to parse | docs/config only | nothing — expected |
+
+`cgr stats` also lists nodes and relationships per project, and
+`cgr delete-project --project <name>` removes one project from the graph without
+touching the others (useful after re-laying a workspace).
+
 ## Measured, not promised
 
 Reference corpus: 21 projects, 9,386 files, 89 MB, ~22M tokens, on one Windows 11

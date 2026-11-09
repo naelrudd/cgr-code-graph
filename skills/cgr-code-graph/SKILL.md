@@ -181,7 +181,27 @@ Verify with `hermes mcp test cgr`. New tools only appear after `/reload-mcp` or 
   error, reproduce it from a neutral cwd (`cd /tmp`) before blaming your quoting.
 - **Convert paths before handing them to `cgr.exe`.** It is a native binary: `/d/work` and `/tmp/x` do not resolve, and under WSL `/mnt/d/work` resolves as `D:\mnt\d\work` — either way `workspace add-repo` fails silently per project. Use `scripts/_common.sh`'s `cgr_native_path` (branches on `cygpath -w` vs `wslpath -w`) and surface stderr instead of `>/dev/null 2>&1`. Same in reverse when reading `~/.cgr/workspaces/*.toml`, which stores `D:\\...` — convert with `wslpath -u` / `cygpath -u` before any `[ -d ]` test, or every repo reads as missing.
 - Progress check is a counter, not the log: `cgr_nodes` in `~/.cgr/graph.sqlite` climbs by thousands per minute when healthy.
-- `cgr workspace delete <name>` removes the definition but keeps indexed graph rows; `cgr workspace remove-repo` drops a single repo.
+- **A `state/<project>/` folder is not proof of indexing.** A killed sync, a sync
+  that wrote files but never parsed them, and a repo in a language cgr has no
+  grammar for all leave that folder behind. Read the graph:
+  `python3 scripts/audit-workspace.py <workspace>` prints nodes/defs/files/edges per
+  declared repo and only exits 1 when a repo has no nodes at all. Measured on a
+  21-repo workspace: `.astro` (peeler) lands as File nodes with zero definitions —
+  cgr has no grammar for Astro, Vue or Svelte, so those repos are unqueryable no
+  matter how often they sync. Do not "fix" that with a re-sync.
+- **`cgr status` cannot report sync times on the embedded (SQLite) backend** — it
+  reads Memgraph at `localhost:7687`, so it prints `syncs: unknown … could not be
+  read`. Use `cgr stats` (per-project nodes/relationships) or the audit script.
+- `cgr delete-project --project <name>` is the only clean way to remove one project
+  from the graph; `cgr workspace delete <name>` removes the definition but keeps
+  indexed graph rows.
+- **A stale `:IncompleteRun` marker can outlive its process.** cgr clears it only
+  when the marker's `owner_pid` is provably dead — and Windows recycles PIDs, so a
+  killed sync's pid can come back as an unrelated live process (measured: pid 22036
+  was `OpenConsole`), and then `delete-project` keeps the marker forever. The row is
+  bookkeeping with no edges; deleting it from `cgr_nodes` by hand is safe once you
+  back up `graph.sqlite`.
+- `cgr workspace remove-repo` drops a single repo from a workspace definition.
 
 ## Querying a workspace's graph
 

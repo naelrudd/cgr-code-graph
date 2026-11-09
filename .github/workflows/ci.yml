@@ -39,6 +39,15 @@ jobs:
             bash -n "$f" && echo "ok  $f"
           done
 
+      - name: python syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in scripts/*.py; do
+            python3 -c "import ast,sys; ast.parse(open(sys.argv[1],encoding='utf-8').read())" "$f" \
+              && echo "ok  $f"
+          done
+
       - name: unit tests
         shell: bash
         run: bash tests/smoke.sh

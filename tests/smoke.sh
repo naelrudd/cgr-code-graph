@@ -242,6 +242,61 @@ has "the error names the workspace file" "$OUT" "nope.toml"
 
 rm -rf "$IDXROOT"
 
+echo "== audit-workspace.py reads the graph, not the hash cache"
+
+# A sync that dies after writing its hash cache leaves state/<project>/ behind but
+# no nodes, so "the folder exists" is not proof of anything. The audit builds a
+# tiny graph with the same schema and checks each verdict: parsed code, a language
+# cgr has no parser for, and a repo with nothing at all.
+AUROOT="$(cgr_posix_path "${TMPDIR:-/tmp}")/cgr-audit"
+AUNATIVE="$(cgr_native_path "$AUROOT")"
+AUTOML="${AUNATIVE//\\//}"   # python and sqlite need the native form; TOML reads /
+rm -rf "$AUROOT"; mkdir -p "$AUROOT/home/workspaces" "$AUROOT/good" "$AUROOT/site/docs"
+printf 'def f():\n    pass\n' > "$AUROOT/good/a.py"
+printf -- '---\ntitle: x\n---\nbody\n' > "$AUROOT/site/p.astro"
+printf 'notes\n' > "$AUROOT/site/docs/n.md"
+printf '%s\n' \
+  '[workspace]' 'name = "wsau"' '' \
+  '[[workspace.repos]]' "path = \"$AUTOML/good\"" 'project_name = "good__aaaa1111"' 'project_named = false' '' \
+  '[[workspace.repos]]' "path = \"$AUTOML/site\"" 'project_name = "site__bbbb2222"' 'project_named = false' '' \
+  '[[workspace.repos]]' "path = \"$AUTOML/ghost\"" 'project_name = "ghost__cccc3333"' 'project_named = false' \
+  > "$AUROOT/home/workspaces/wsau.toml"
+
+PY=""
+for cand in python3 python; do
+  command -v "$cand" >/dev/null 2>&1 && { PY="$cand"; break; }
+done
+if [ -n "$PY" ]; then
+  "$PY" - "$AUNATIVE" <<'PYEOF'
+import sqlite3, sys
+root = sys.argv[1]
+con = sqlite3.connect(f"{root}/home/graph.sqlite")
+con.execute("create table cgr_nodes (id integer primary key, label text, key text, props text)")
+con.execute("create table cgr_edges (id integer primary key, src integer, dst integer, type text, props text)")
+nodes = [
+    ("Project", "good__aaaa1111"),
+    ("File", f"{root}/good/a.py"),
+    ("Function", "good__aaaa1111.a.f"),
+    ("Module", "site__bbbb2222.astro.config"),
+    ("File", f"{root}/site/p.astro"),
+    ("File", f"{root}/site/docs/n.md"),
+]
+con.executemany("insert into cgr_nodes (label, key) values (?,?)", nodes)
+con.executemany("insert into cgr_edges (src, dst, type) values (?,?,?)", [(3, 2, "DEFINES")])
+con.commit()
+PYEOF
+  AUOUT="$(cd "$KIT" && CGR_HOME="$AUNATIVE/home" "$PY" scripts/audit-workspace.py wsau 2>&1)"
+  no "audit exits 1 when a declared repo has no nodes" "$?" "$AUOUT"
+  has "audit counts the parsed repo" "$AUOUT" "good__aaaa1111"
+  has "audit names the repo with no nodes" "$AUOUT" "ghost__cccc3333"
+  has "audit recognises a language cgr cannot parse" "$AUOUT" "HAS NO PARSER"
+  has "audit reports totals" "$AUOUT" "declared: 3  with nodes: 2  missing: 1"
+else
+  bad "audit-workspace.py needs python3" "no python on PATH"
+fi
+
+rm -rf "$AUROOT"
+
 echo "== portability rules"
 
 # The author's own machine must not be in the scripts. Comments are excluded:

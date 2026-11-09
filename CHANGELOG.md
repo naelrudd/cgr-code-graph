@@ -22,6 +22,13 @@ release it installs.
   the call edge is absent (18 edges as one root, 14 as two).
   `tests/smoke.sh` drives the script against a stub `cgr` and asserts the argv it
   builds, so the mode is covered without running a real index.
+- `scripts/audit-workspace.py`: reads the graph (not the hash cache) and reports,
+  per declared repo, how many nodes, definitions, files and edges it holds. A repo
+  that never synced, a repo whose sync died after writing files, and a repo in a
+  language cgr has no grammar for (`.astro`, `.vue`, …) look identical on disk —
+  all three leave a `state/<project>/` folder — so the cache is not evidence.
+  Exit 1 only for a declared repo with no nodes at all. Covered by `tests/smoke.sh`
+  against a synthetic graph, no cgr needed.
 - `init-workspace.sh` now refuses to re-lay an existing workspace unless `--force`
   is passed, and names the repos already registered instead of overwriting them
   silently. `cgr workspace create --force` only replaces the definition: the
