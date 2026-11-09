@@ -59,6 +59,15 @@ repos() {
   ' "$TOML"
 }
 
+# Embedding 50 long snippets in one forward pass asks torch for ~300 MB of
+# contiguous CPU memory. On a 16 GB machine that also runs an agent, the pass
+# fails with `DefaultCPUAllocator: not enough memory`, the sync still exits 0,
+# and reconciliation reports "1950 of 3757 embeddings missing" -- half the corpus
+# unsearchable with no error to show for it. The missing points are owed to the
+# next run, so one OOM costs a whole second build (measured: 1582 s then 1134 s on
+# a 3,763-section corpus). 8 needs ~50 MB and is not measurably slower on CPU.
+export QDRANT_BATCH_SIZE="${QDRANT_BATCH_SIZE:-8}"
+
 # No --clean: that discards the whole graph. Unchanged files are skipped via the
 # per-project hash cache in ~/.cgr/state/<project>/, so re-runs are seconds.
 count=0

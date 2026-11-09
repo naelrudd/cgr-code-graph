@@ -204,6 +204,16 @@ omit it and you get `Project ... not found`.
   directory that exists in the directory you run from, and when a run dies with that
   error, reproduce it from a neutral cwd (`cd /tmp`) before blaming your quoting.
 - **Convert paths before handing them to `cgr.exe`.** It is a native binary: `/d/work` and `/tmp/x` do not resolve, and under WSL `/mnt/d/work` resolves as `D:\mnt\d\work` — either way `workspace add-repo` fails silently per project. Use `scripts/_common.sh`'s `cgr_native_path` (branches on `cygpath -w` vs `wslpath -w`) and surface stderr instead of `>/dev/null 2>&1`. Same in reverse when reading `~/.cgr/workspaces/*.toml`, which stores `D:\\...` — convert with `wslpath -u` / `cygpath -u` before any `[ -d ]` test, or every repo reads as missing.
+- **A big docs corpus can run the embedding pass out of memory, and the sync still exits 0.**
+  `QDRANT_BATCH_SIZE` defaults to 50; 50 long snippets in one forward pass asks torch for
+  ~300 MB of contiguous CPU memory, and on a 16 GB machine that already runs an agent it fails
+  per batch with `[enforce fail at alloc_cpu.cpp:117] DefaultCPUAllocator: not enough memory: you
+  tried to allocate 314572800 bytes`, then finishes the run normally and reports
+  `Vector store reconciliation: 1950 of 3757 embeddings missing`. Half the corpus is unsearchable
+  and nothing failed. Measured on `neural`: 1,582 s with 1,950 missing, then 1,134 s complete at
+  batch 8. `scripts/index.sh` exports `QDRANT_BATCH_SIZE=8` by default for this reason; a manual
+  `cgr start` needs the same export. The missing points are owed to the next run, so the retry
+  finishes without re-parsing — but reconciliation is the only place that says so, so read it.
 - Progress check is a counter, not the log: `cgr_nodes` in `~/.cgr/graph.sqlite` climbs by thousands per minute when healthy.
 - **A `state/<project>/` folder is not proof of indexing.** A killed sync, a sync
   that wrote files but never parsed them, and a repo in a language cgr has no
