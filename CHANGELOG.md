@@ -11,6 +11,20 @@ release it installs.
 
 ### Added
 
+- `scripts/register-mcp.sh ... --with-writer` registers a second MCP server,
+  `cgr-write`, with `--read-only` (and `MCP_READ_ONLY`) removed. `--read-only`
+  advertises 26 of 37 tools, and the eleven it hides include `annotate` — the only
+  way an agent can write a note. Opt-in, because `rename`, `write_file` and
+  `wipe_database` come with it.
+- A gloss is the durable half of "why": a `Gloss` node with `kind`
+  (`invariant` | `mirrors` | `platform-conditional` | `safety-precondition`), a
+  `target_hash` fingerprint and an `ANNOTATES` edge to the definition. Anchors are
+  re-graded on every sync (`EXACT` / `STALE` / `MOVED` / `AMBIGUOUS` / `LOST`), so
+  a note follows a renamed function instead of pointing at a stale line number.
+  Verified against a real definition: `gloss:712af35dc16004482b12e2cf`,
+  `anchor_state: EXACT`. Read back per target with `glosses <qualified name>`;
+  there is no "search all notes", which is the boundary with a markdown vault.
+
 - `scripts/init-workspace.sh <workspace> <root> --root` indexes the root itself as
   a single project instead of registering one project per repo. Imports and calls
   resolve by path against the indexed root, so a directory holding several

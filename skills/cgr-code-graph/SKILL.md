@@ -156,6 +156,30 @@ Two traps:
 
 Verify with `hermes mcp test cgr`. New tools only appear after `/reload-mcp` or a new session — a running session does not pick them up.
 
+### Writing notes: `--read-only` hides `annotate`
+
+`--read-only` advertises **26 of 37** tools. The eleven it hides include `annotate`
+(attach a note to one definition) plus `rename`, `write_file`, `wipe_database`.
+So a read-only server can *read* notes and never *write* one — check the count in
+`hermes mcp test` before promising a user that agents can leave notes behind.
+
+To enable: register a second entry, same command, `--read-only` and
+`MCP_READ_ONLY` both removed (`scripts/register-mcp.sh <ws> <root> --with-writer`
+does it). The env var re-arms the gate on its own, so dropping only the flag is not
+enough. Expect 37 tools and `annotate` in the list.
+
+What a gloss can hold (verified on a real definition): `kind` is one of
+`invariant` | `mirrors` | `platform-conditional` | `safety-precondition`, plus
+`target_hash` (`ah1:...`), `commit_sha` and an `ANNOTATES` edge. Anchors are
+re-graded each sync as `EXACT` / `STALE` / `MOVED` / `AMBIGUOUS` / `LOST` — `MOVED`
+means the note survived a rename, which a markdown link to a line number cannot do.
+Read them back per target with `glosses <qualified name>`; there is no
+search-all-notes call, and four `kind` values are not free prose. Code-shaped "why"
+belongs here; everything else belongs in the markdown vault.
+
+`annotate` takes `project` when the corpus root is not itself an indexed project —
+omit it and you get `Project ... not found`.
+
 ## Sync operations (where runs go wrong)
 
 - **`--update-graph` with `--workspace` is not a headless build.** Repo mode

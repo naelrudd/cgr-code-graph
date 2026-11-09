@@ -53,6 +53,7 @@ bash scripts/install.sh                       # uv tool + the httpx the wheel om
 bash scripts/doctor.sh D:/work                # preflight: fail here, not 40 minutes into a sync
 bash scripts/init-workspace.sh work D:/work   # detect projects, register them, start indexing
 bash scripts/register-mcp.sh work D:/work     # make it automatic (Hermes shown; any MCP client works)
+bash scripts/register-mcp.sh work D:/work --with-writer   # + a server that can write notes
 bash scripts/refresh.sh work                  # later: incremental re-sync, seconds
 bash scripts/ask.sh work "where is X built?"  # one question, no agent session
 ```
@@ -90,6 +91,34 @@ how an agent works:
 | `ask_agent` | the whole graph as a chat target (needs an LLM endpoint) |
 | `explain_traceback` / `rank_root_causes` | traceback → graph correlation |
 | `flow_verdict` | source-to-sink reachability for a sanitizer question |
+
+### Notes that stick to the code
+
+`--read-only` also hides the writing half: **26 of 37 tools**. Among the missing
+eleven is `annotate`, the only way an agent can leave a note behind — and a note
+is how the *why* survives the session that produced it.
+
+`scripts/register-mcp.sh <workspace> <root> --with-writer` adds a second server,
+`cgr-write`, with the flag dropped. Same graph, same env, minus `MCP_READ_ONLY`
+(the env var alone re-arms the gate). Opt-in because the other writers —
+`rename`, `write_file`, `wipe_database` — come along with it.
+
+A gloss is a node, not a comment:
+
+```
+qualified_name : gloss:712af35dc16004482b12e2cf
+kind           : invariant          (invariant | mirrors | platform-conditional | safety-precondition)
+anchor_state   : EXACT              (re-graded each sync: MOVED survives a rename, LOST means gone)
+target_hash    : ah1:c0f8b934...b608f6
+commit_sha     : 4d46bdf8...
+   ANNOTATES ──▶ nael-algorithms__aa1801f9.exercises.binary_search.solution.binary_search
+```
+
+That fingerprinting is the reason to prefer this over a markdown link to a line
+number: the link rots silently, the gloss is re-anchored. The limit is the shape —
+four `kind` values fit engineering constraints, not free prose, and notes are read
+per target (`glosses <qualified name>`), so there is no "search all notes". Those
+belong in a vault; this belongs next to the function.
 
 ## One root, or one project per repo
 
@@ -190,7 +219,9 @@ Full measurements, including the throughput math for sizing your own corpus:
 ## Three usage layers
 
 1. **Automatic (recommended).** Register `cgr mcp-server --read-only` with your
-   agent, and the tools appear next to the built-in ones.
+   agent, and the tools appear next to the built-in ones. Add `--with-writer` if
+   the agent should be able to leave notes (`annotate`) — see
+   [Notes that stick to the code](#notes-that-stick-to-the-code).
 2. **Contextual.** Drop the short "use cgr before grep" block from
    [`examples/CLAUDE.md`](examples/CLAUDE.md) into a repo's `CLAUDE.md` /
    `AGENTS.md`. This is what makes a *non*-`cgr`-aware agent reach for graph tools

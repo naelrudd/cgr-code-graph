@@ -297,6 +297,48 @@ fi
 
 rm -rf "$AUROOT"
 
+echo "== register-mcp.sh gives the writer entry only when asked"
+
+# --read-only hides annotate (26 of 37 tools), so a note can never be written through
+# that server. --with-writer adds cgr-write without the flag; the stub hermes records
+# the argv so the assertion is about what the script builds, not about hermes.
+RMROOT="$(cgr_posix_path "${TMPDIR:-/tmp}")/cgr-regmcp"
+rm -rf "$RMROOT"; mkdir -p "$RMROOT/bin"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "$HERMES_CALLS"\nexit 0\n' > "$RMROOT/bin/hermes"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$RMROOT/bin/cgr"
+chmod +x "$RMROOT/bin/hermes" "$RMROOT/bin/cgr"
+export HERMES_CALLS="$RMROOT/calls.log"
+
+: > "$HERMES_CALLS"
+PATH="$RMROOT/bin:$PATH" LLM_ENDPOINT=http://gw/v1 LLM_MODEL=m LLM_API_KEY=k \
+  bash "$KIT/scripts/register-mcp.sh" wsread /repo >/dev/null 2>&1
+CALLS="$(cat "$HERMES_CALLS")"
+is "one registration without --with-writer" "$(count 'mcp add' "$HERMES_CALLS")" "1"
+case "$CALLS" in
+  *'--read-only'*) ok "the default registration is read-only" ;;
+  *)               bad "the default registration is read-only" "no --read-only in argv" ;;
+esac
+case "$CALLS" in
+  *cgr-write*) bad "no writer entry unless asked" "saw cgr-write" ;;
+  *)           ok  "no writer entry unless asked" ;;
+esac
+
+: > "$HERMES_CALLS"
+PATH="$RMROOT/bin:$PATH" LLM_ENDPOINT=http://gw/v1 LLM_MODEL=m LLM_API_KEY=k \
+  bash "$KIT/scripts/register-mcp.sh" wsread /repo --with-writer >/dev/null 2>&1
+is "--with-writer registers a second server" "$(count 'mcp add' "$HERMES_CALLS")" "2"
+has "the writer entry is named cgr-write" "$(grep 'cgr-write' "$HERMES_CALLS" || true)" "mcp add cgr-write"
+case "$(grep 'cgr-write' "$HERMES_CALLS" || true)" in
+  *'--read-only'*) bad "the writer entry drops --read-only" "flag still present" ;;
+  *)               ok  "the writer entry drops --read-only" ;;
+esac
+case "$(grep 'cgr-write' "$HERMES_CALLS" || true)" in
+  *MCP_READ_ONLY*) bad "the writer entry drops MCP_READ_ONLY" "env var still present" ;;
+  *)               ok  "the writer entry drops MCP_READ_ONLY" ;;
+esac
+
+rm -rf "$RMROOT"
+
 echo "== portability rules"
 
 # The author's own machine must not be in the scripts. Comments are excluded:
