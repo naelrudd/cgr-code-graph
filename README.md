@@ -34,7 +34,9 @@ An LLM endpoint is optional and only used by `ask_agent`.
 - [What you get](#what-you-get)
 - [One root, or one project per repo](#one-root-or-one-project-per-repo)
 - [Measured, not promised](#measured-not-promised)
-- [Three usage layers](#three-usage-layers)
+- [Four usage layers](#four-usage-layers)
+  - [Warm client: when the client cannot register MCP](#warm-client-when-the-client-cannot-register-mcp)
+  - [Markdown corpora: sections are searchable, after one patch](#markdown-corpora-sections-are-searchable-after-one-patch)
 - [Requirements](#requirements)
 - [When not to use this](#when-not-to-use-this)
 - [Troubleshooting](#troubleshooting)
@@ -56,6 +58,10 @@ bash scripts/register-mcp.sh work D:/work     # make it automatic (Hermes shown;
 bash scripts/register-mcp.sh work D:/work --with-writer   # + a server that can write notes
 bash scripts/refresh.sh work                  # later: incremental re-sync, seconds
 bash scripts/ask.sh work "where is X built?"  # one question, no agent session
+
+python scripts/patch-sections.py              # optional: make markdown/docs searchable too
+python scripts/cgrq.py serve --workspace work  # optional: warm client, ~0.5-1.9 s per query
+python scripts/cgrq.py find "where is X built" -p <project>__<hash>
 ```
 
 `init-workspace.sh` defaults to **one project per repo** under the root. Add
@@ -91,6 +97,11 @@ how an agent works:
 | `ask_agent` | the whole graph as a chat target (needs an LLM endpoint) |
 | `explain_traceback` / `rank_root_causes` | traceback → graph correlation |
 | `flow_verdict` | source-to-sink reachability for a sanitizer question |
+
+With `scripts/patch-sections.py` applied, `semantic_search` also covers markdown
+sections, so a docs corpus (design notes, memories, decisions) answers the same
+query instead of "No semantic matches" — see
+[Markdown corpora](#markdown-corpora-sections-are-searchable-after-one-patch).
 
 ### Notes that stick to the code
 
@@ -213,12 +224,23 @@ machine with no GPU.
 | re-sync after edits | seconds (per-project hash cache, per-snippet embedding cache) |
 | storage | one 13 MB `graph.sqlite` + one vectors SQLite file |
 
+What a question costs, measured against the same corpus:
+
+| question | through cgr | by reading files |
+| --- | --- | --- |
+| "where are bookings created" | `find` 2 hits + 4 lines each, **~700 B**, 1.2 s warm | 2 files, **14 KB+**, plus grep to find them |
+| "how does the payment status transition" | `ctx` one span, **166 tokens** | open the module, **14 KB** |
+| "what did we decide about X" (docs) | `find` 3 sections, **~900 B**, 3.3 s | `INDEX.md` + focus + 2 memories, **17 KB+** |
+
+The daemon is what makes the second column cheap: without it every
+`semantic_search` reloads the embedding model (**32 s** cold, 0.3–1.9 s warm).
+
 Full measurements, including the throughput math for sizing your own corpus:
 [`docs/benchmark.md`](docs/benchmark.md).
 
-## Three usage layers
+## Four usage layers
 
-0. **Query before read (the token half).** A question about a corpus is answered
+1. **Query before read (the token half).** A question about a corpus is answered
    from the graph, not by opening files: `cgrq find "<question>" -p <project>`
    returns ranked spans with the head of each body (~700 B for two hits, warm
    1.2 s) where reading the files costs 14 KB+ each. `cgrq ctx` then returns one
@@ -226,15 +248,16 @@ Full measurements, including the throughput math for sizing your own corpus:
    describes the checkout — a hit from a stale graph is worse than no hit,
    because it reads as current. See
    [Warm client](#warm-client-when-the-client-cannot-register-mcp).
-1. **Automatic (recommended).** Register `cgr mcp-server --read-only` with your
+   Order matters: `find` → `ctx` → open the file only when both fall short.
+2. **Automatic (recommended).** Register `cgr mcp-server --read-only` with your
    agent, and the tools appear next to the built-in ones. Add `--with-writer` if
    the agent should be able to leave notes (`annotate`) — see
    [Notes that stick to the code](#notes-that-stick-to-the-code).
-2. **Contextual.** Drop the short "use cgr before grep" block from
+3. **Contextual.** Drop the short "use cgr before grep" block from
    [`examples/CLAUDE.md`](examples/CLAUDE.md) into a repo's `CLAUDE.md` /
    `AGENTS.md`. This is what makes a *non*-`cgr`-aware agent reach for graph tools
    first.
-3. **Manual.** `bash scripts/ask.sh work "where is the search index built?"`
+4. **Manual.** `bash scripts/ask.sh work "where is the search index built?"`
 
 ### Warm client: when the client cannot register MCP
 
@@ -276,7 +299,13 @@ bash scripts/index.sh work                  # re-sync to embed the sections
 - `uv` — it installs everything else
 - ~1.1 GB disk for `torch` + `transformers` + the embedding model
 - Python 3.11+ (managed by `uv`); Windows, macOS or Linux
-- An OpenAI-compatible endpoint **only** for `ask_agent` / NL→Cypher. Graph building
+- ~1.5 GB RAM while embedding, and the batch size is what decides whether you get
+  it. `QDRANT_BATCH_SIZE` defaults to 50; on a 16 GB machine that already runs an
+  agent, a 3,700-section corpus failed every batch with `DefaultCPUAllocator: not
+  enough memory` and the sync still exited 0 — only reconciliation said
+  "1,950 of 3,757 embeddings missing". `scripts/index.sh` exports `8` by default;
+  a manual `cgr start` needs `QDRANT_BATCH_SIZE=8` too.
+- An [OI]-compatible endpoint **only** for `ask_agent` / NL→Cypher. Graph building
   and the deterministic tools need no LLM at all.
 
 ## When not to use this
